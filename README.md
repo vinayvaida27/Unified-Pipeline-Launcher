@@ -18,6 +18,45 @@ Most users only need `START_LAUNCHER.vbs` and `apps/`. The implementation,
 build scripts, configuration, tests, and runtime live in `src/` so the root
 folder stays easy to understand.
 
+## Install On A New System
+
+Open PowerShell and paste this full snippet. Change only the `$Root` value.
+
+```powershell
+# Enter the root install folder path here only.
+# Example: "Z:\Vinay Vaida\Unified-Streamlit-Launcher"
+$Root = "Z:\Vinay Vaida\Unified-Streamlit-Launcher"
+
+$Repo = "https://github.com/vinayvaida27/Unified-Streamlit-Launcher.git"
+$ErrorActionPreference = "Stop"
+
+if (Test-Path $Root) {
+    Write-Host "Folder exists. Pulling latest main..."
+    Set-Location $Root
+    git fetch origin
+    git checkout main
+    git pull --ff-only origin main
+} else {
+    Write-Host "Cloning repo..."
+    git clone $Repo $Root
+    Set-Location $Root
+    git checkout main
+}
+
+Write-Host "Installing launcher and app dependencies..."
+powershell -NoProfile -ExecutionPolicy Bypass -File ".\src\scripts\update_dependencies.ps1"
+
+Write-Host "Creating no-console launcher shortcut..."
+powershell -NoProfile -ExecutionPolicy Bypass -File ".\src\scripts\create_launcher_shortcut.ps1" -ReleaseDir $Root
+
+Write-Host "Opening launcher..."
+Start-Process (Join-Path $Root "START_LAUNCHER.lnk")
+
+Write-Host ""
+Write-Host "Done. Users should open:"
+Write-Host (Join-Path $Root "START_LAUNCHER.lnk")
+```
+
 ## Start The Launcher
 
 Double-click:
