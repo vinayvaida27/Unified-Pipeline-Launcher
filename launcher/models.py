@@ -54,6 +54,7 @@ class RuntimeConfig:
     create_virtual_environments: bool
     environment_strategy: str
     offline_install_preferred: bool
+    sync_to_local_cache: bool = True
     download: RuntimeDownloadConfig = field(default_factory=RuntimeDownloadConfig)
 
 

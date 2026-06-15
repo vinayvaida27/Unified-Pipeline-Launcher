@@ -72,6 +72,16 @@ class ExeBuilder:
             if dst.exists():
                 shutil.rmtree(dst)
             shutil.copytree(src, dst)
+
+        # Simple double-click entry point for users on a network drive.
+        (self.release_dir / "START_LAUNCHER.bat").write_text(
+            "@echo off\n"
+            ":: Double-click this file to open the Unified Streamlit Launcher.\n"
+            ":: No Python install needed. Works from a network drive.\n"
+            'start "" "%~dp0launcher.exe"\n',
+            encoding="utf-8",
+        )
+
         (self.release_dir / "release_info.json").write_text(
             json.dumps(
                 {
@@ -79,6 +89,11 @@ class ExeBuilder:
                     "built_at": datetime.now(timezone.utc).isoformat(),
                     "apps_external_to_exe": True,
                     "app_registry": "apps/apps.json",
+                    "network_drive_setup": (
+                        "Set create_virtual_environments=false and "
+                        "sync_to_local_cache=false in config/launcher_config.json, "
+                        "then run scripts/prepare_shared_runtime.ps1 once."
+                    ),
                 },
                 indent=2,
             )
@@ -127,8 +142,8 @@ class ExeBuilder:
         self.verify_release()
         print("=" * 72)
         print(f"Build complete: {self.release_dir}")
-        print("Users can run: launcher.exe")
-        print("Future apps can be added by editing apps/apps.json and apps/<folder>/")
+        print("Users can run: launcher.exe or START_LAUNCHER.bat")
+        print("Network drive: run scripts/prepare_shared_runtime.ps1 once after deploy")
         print("=" * 72)
         return self.release_dir
 

@@ -42,7 +42,7 @@ def load_platform_config(config_path: Path) -> PlatformConfig:
     runtime = _require(data, "runtime")
     updates = _require(data, "updates")
     launcher = _require(data, "launcher")
-    logging = _require(data, "logging")
+    logging_cfg = _require(data, "logging")
     window = _require(data, "window")
 
     return PlatformConfig(
@@ -68,6 +68,7 @@ def load_platform_config(config_path: Path) -> PlatformConfig:
             create_virtual_environments=bool(_require(runtime, "create_virtual_environments")),
             environment_strategy=str(_require(runtime, "environment_strategy")),
             offline_install_preferred=bool(_require(runtime, "offline_install_preferred")),
+            sync_to_local_cache=bool(runtime.get("sync_to_local_cache", True)),
             download=RuntimeDownloadConfig(
                 enabled=bool(runtime.get("download", {}).get("enabled", False)),
                 version=str(runtime.get("download", {}).get("version", "")),
@@ -88,9 +89,9 @@ def load_platform_config(config_path: Path) -> PlatformConfig:
             maximum_parallel_startups=int(_require(launcher, "maximum_parallel_startups")),
         ),
         logging=LoggingConfig(
-            level=str(_require(logging, "level")),
-            maximum_file_size_mb=int(_require(logging, "maximum_file_size_mb")),
-            backup_count=int(_require(logging, "backup_count")),
+            level=str(_require(logging_cfg, "level")),
+            maximum_file_size_mb=int(_require(logging_cfg, "maximum_file_size_mb")),
+            backup_count=int(_require(logging_cfg, "backup_count")),
         ),
         source_path=config_path.resolve(),
     )

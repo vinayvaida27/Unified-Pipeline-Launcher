@@ -75,12 +75,10 @@ class EnvironmentManager:
 
     def environment_path_for(self, app: ApplicationManifest) -> Path:
         """Return deterministic environment path for an app version."""
-
         return self.environments_dir / app.id / app.version
 
     def venv_python_for(self, environment_path: Path) -> Path:
         """Return the Python executable path inside a Windows venv."""
-
         if sys.platform == "win32":
             return environment_path / "Scripts" / "python.exe"
         return environment_path / "bin" / "python"
@@ -90,14 +88,12 @@ class EnvironmentManager:
 
     def requirements_hash(self, requirements_path: Path) -> str:
         """Return SHA-256 for requirements file."""
-
         digest = hashlib.sha256()
         digest.update(requirements_path.read_bytes())
         return digest.hexdigest()
 
     def runtime_fingerprint(self) -> str:
         """Identify the runtime build so venvs rebuild after runtime updates."""
-
         try:
             stat = self.runtime_python.stat()
             return f"{self.runtime_python.resolve().as_posix()}|{stat.st_size}|{stat.st_mtime_ns}"
@@ -106,7 +102,6 @@ class EnvironmentManager:
 
     def is_ready(self, app: ApplicationManifest) -> bool:
         """Return whether an environment marker matches current inputs."""
-
         env_path = self.environment_path_for(app)
         marker = self.marker_path_for(env_path)
         python_path = self.venv_python_for(env_path)
@@ -125,7 +120,6 @@ class EnvironmentManager:
 
     def pip_install_command(self, app: ApplicationManifest, venv_python: Path) -> list[str]:
         """Build the dependency installation command."""
-
         command = [str(venv_python), "-m", "pip", "install"]
         if self.config.runtime.offline_install_preferred and app.wheelhouse.exists() and any(app.wheelhouse.iterdir()):
             command.extend(["--no-index", "--find-links", str(app.wheelhouse)])
@@ -134,7 +128,6 @@ class EnvironmentManager:
 
     def _run_logged(self, command: list[str], log_handle, timeout_seconds: int, failure_message: str, error_cls) -> None:
         """Run a command streaming output to the app log, with a timeout."""
-
         log_handle.write(f"\n{datetime.now(timezone.utc).isoformat()} Running: {' '.join(command)}\n")
         log_handle.flush()
         try:
@@ -151,9 +144,34 @@ class EnvironmentManager:
         if result.returncode != 0:
             raise error_cls(f"{failure_message} (exit code {result.returncode}). Open the application log for details.")
 
-    def ensure_environment(self, app: ApplicationManifest, progress=None) -> EnvironmentState:
-        """Create or reuse an app environment."""
+    def shared_runtime_state(self, app: ApplicationManifest) -> EnvironmentState:
+        """Return an EnvironmentState pointing directly to the bundled runtime.
 
+        Used when create_virtual_environments is disabled.  The admin runs
+        scripts/prepare_shared_runtime.ps1 once to pre-install all packages.
+        No venv creation, no pip install -- startup is instant for every user.
+        """
+        marker_path = self.runtime_python.parent / ".shared_runtime_ready.json"
+        return EnvironmentState(
+            app.id, app.version, self.runtime_python.parent, self.runtime_python, True, marker_path
+        )
+
+    def ensure_environment(self, app: ApplicationManifest, progress=None) -> EnvironmentState:
+        """Create or reuse an app environment.
+
+        Fast path: when create_virtual_environments is False the shared bundled
+        runtime is returned immediately.  No venv, no pip install, zero wait.
+
+        Normal path: per-app/per-version venvs are created on first launch and
+        reused on all subsequent launches (existing behaviour).
+        """
+        # Fast path: shared runtime mode.
+        if not self.config.runtime.create_virtual_environments:
+            if progress:
+                progress("Using shared runtime")
+            return self.shared_runtime_state(app)
+
+        # Normal path: per-app isolated virtual environment.
         env_path = self.environment_path_for(app)
         venv_python = self.venv_python_for(env_path)
         marker_path = self.marker_path_for(env_path)
@@ -165,7 +183,8 @@ class EnvironmentManager:
         self.logs_dir.mkdir(parents=True, exist_ok=True)
         log_path = self.logs_dir / f"{app.id}.log"
         with log_path.open("w", encoding="utf-8") as log_handle:
-            log_handle.write(f"{datetime.now(timezone.utc).isoformat()} Preparing environment for {app.name} {app.version}\n")
+            ts = datetime.now(timezone.utc).isoformat()
+            log_handle.write(f"{ts} Preparing environment for {app.name} {app.version}\n")
             if progress:
                 progress("Creating virtual environment")
             self._run_logged(
@@ -193,12 +212,15 @@ class EnvironmentManager:
                 "Streamlit validation import failed",
                 DependencyInstallationError,
             )
+        py_ver = subprocess.check_output(
+            [str(venv_python), "--version"], text=True, env=scrubbed_environment()
+        ).strip()
         atomic_write_json(
             marker_path,
             {
                 "app_id": app.id,
                 "app_version": app.version,
-                "python_version": subprocess.check_output([str(venv_python), "--version"], text=True, env=scrubbed_environment()).strip(),
+                "python_version": py_ver,
                 "requirements_sha256": self.requirements_hash(app.requirements),
                 "runtime_fingerprint": self.runtime_fingerprint(),
                 "installed_at": datetime.now(timezone.utc).isoformat(),

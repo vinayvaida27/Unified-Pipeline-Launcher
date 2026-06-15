@@ -1,9 +1,11 @@
 from __future__ import annotations
 
 import json
+from dataclasses import replace
 
 from launcher.app_discovery import discover_apps
 from launcher.environment_manager import EnvironmentManager, RuntimeResolver
+from launcher.models import RuntimeConfig
 
 
 def _seed_marker(manager, app, marker_overrides=None):
@@ -23,6 +25,12 @@ def _seed_marker(manager, app, marker_overrides=None):
         marker.update(marker_overrides)
     manager.marker_path_for(env_path).write_text(json.dumps(marker), encoding="utf-8")
     return env_path
+
+
+def _config_with_venvs(config):
+    """Return a copy of config with create_virtual_environments=True."""
+    new_runtime = replace(config.runtime, create_virtual_environments=True, sync_to_local_cache=True)
+    return replace(config, runtime=new_runtime)
 
 
 def test_calculates_deterministic_environment_path(temp_config, repo_root):
@@ -86,16 +94,36 @@ def test_runtime_resolver_can_skip_validation_before_local_sync(temp_config, tmp
     assert resolver.resolve(validate=False) == runtime_python
 
 
+def test_shared_runtime_fast_path(temp_config, repo_root):
+    """When create_virtual_environments is False, ensure_environment returns
+    the shared runtime state immediately without creating any venv."""
+
+    app = discover_apps(repo_root / "apps")[0]
+    # Default config already has create_virtual_environments=False.
+    manager = EnvironmentManager(temp_config, repo_root / "fake-python.exe")
+    assert not temp_config.runtime.create_virtual_environments
+
+    progress_messages = []
+    state = manager.ensure_environment(app, progress=progress_messages.append)
+
+    assert state.ready is True
+    assert state.app_id == app.id
+    assert state.python_path == repo_root / "fake-python.exe"
+    assert "Using shared runtime" in progress_messages
+
+
 def test_ensure_environment_runs_full_flow(temp_config, repo_root, monkeypatch):
-    """Drive ensure_environment end-to-end with mocks.
+    """Drive ensure_environment end-to-end with mocks (venv mode).
 
     Guards against truncated/incomplete method bodies: a fresh environment must
     create the venv, install deps, validate, and write a complete marker without
     raising NameError or leaving steps out.
     """
 
+    # Force venv mode for this test regardless of the default config.
+    config = _config_with_venvs(temp_config)
     app = discover_apps(repo_root / "apps")[0]
-    manager = EnvironmentManager(temp_config, repo_root / "fake-python.exe")
+    manager = EnvironmentManager(config, repo_root / "fake-python.exe")
 
     calls = []
 

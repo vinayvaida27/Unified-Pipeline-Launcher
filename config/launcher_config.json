@@ -18,9 +18,10 @@
   },
   "runtime": {
     "allow_development_interpreter_fallback": true,
-    "create_virtual_environments": true,
+    "create_virtual_environments": false,
     "environment_strategy": "per_app_per_version",
     "offline_install_preferred": true,
+    "sync_to_local_cache": false,
     "download": {
       "enabled": false,
       "version": "3.11.9",
