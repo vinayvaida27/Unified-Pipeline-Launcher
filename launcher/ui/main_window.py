@@ -5,6 +5,8 @@ from __future__ import annotations
 from collections import deque
 import logging
 import os
+from urllib.parse import parse_qsl, urlencode, urlparse, urlunparse
+from uuid import uuid4
 
 from PySide6.QtCore import QThreadPool, QTimer
 from PySide6.QtCore import QUrl
@@ -56,8 +58,10 @@ class MainWindow(QMainWindow):
         self._startup_queue: deque[str] = deque()
         self._queued_ids: set[str] = set()
         self._starting_ids: set[str] = set()
-        self._log_completed_ids: set[str] = set()
-        self._browser_opened_ids: set[str] = set()
+        self._launch_tokens: dict[str, str] = {}
+        self._active_launch_tokens: set[str] = set()
+        self._log_completed_tokens: set[str] = set()
+        self._browser_opened_tokens: set[str] = set()
         self._user_stopped_ids: set[str] = set()
         self._active_startups = 0
         self._parallel_startup_limit = max(1, config.launcher.maximum_parallel_startups)
@@ -179,9 +183,11 @@ class MainWindow(QMainWindow):
         self._user_stopped_ids.discard(app_id)
         existing = self.process_manager.get(app_id)
         if existing and existing.url:
-            self._open_url(existing.url)
+            verified_url = self._verified_open_url(app_id, existing)
+            if verified_url:
+                self._open_url(verified_url)
             return
-        if app_id in self._queued_ids:
+        if app_id in self._queued_ids or app_id in self._starting_ids:
             return
         if self._active_startups >= self._parallel_startup_limit:
             self._startup_queue.append(app_id)
@@ -192,6 +198,11 @@ class MainWindow(QMainWindow):
 
     def _start_app_now(self, app_id: str) -> None:
         app = self._app_by_id(app_id)
+        if app_id in self._starting_ids:
+            return
+        token = str(uuid4())
+        self._launch_tokens[app_id] = token
+        self._active_launch_tokens.add(token)
         self._active_startups += 1
         self._starting_ids.add(app_id)
         self._update_startup_summary()
@@ -203,17 +214,30 @@ class MainWindow(QMainWindow):
             return self.process_manager.start(app, env)
 
         worker = Worker(work)
-        worker.signals.progress.connect(lambda message: self.cards[app_id].set_status(ApplicationStatus.STARTING, message))
-        worker.signals.finished.connect(lambda state: self._start_finished(app_id, state))
-        worker.signals.failed.connect(lambda message, details: self._start_failed(app_id, message, details))
+        worker.signals.progress.connect(lambda message: self._start_progress(app_id, token, message))
+        worker.signals.finished.connect(lambda state: self._start_finished(app_id, token, state))
+        worker.signals.failed.connect(lambda message, details: self._start_failed(app_id, token, message, details))
         self.thread_pool.start(worker)
 
-    def _start_finished(self, app_id: str, state) -> None:
-        if app_id not in self._log_completed_ids:
+    def _start_progress(self, app_id: str, token: str, message: str) -> None:
+        if self._launch_tokens.get(app_id) != token:
+            return
+        self.cards[app_id].set_status(ApplicationStatus.STARTING, message)
+
+    def _finish_startup_accounting(self, app_id: str, token: str) -> None:
+        if token in self._active_launch_tokens:
+            self._active_launch_tokens.discard(token)
             self._active_startups = max(0, self._active_startups - 1)
-        self._starting_ids.discard(app_id)
-        self._log_completed_ids.discard(app_id)
+        if self._launch_tokens.get(app_id) == token:
+            self._starting_ids.discard(app_id)
+        self._log_completed_tokens.discard(token)
         self._update_startup_summary()
+
+    def _start_finished(self, app_id: str, token: str, state) -> None:
+        if self._launch_tokens.get(app_id) != token:
+            self._finish_startup_accounting(app_id, token)
+            return
+        self._finish_startup_accounting(app_id, token)
         if app_id in self._user_stopped_ids:
             # User pressed Stop while the app was still starting.
             self._user_stopped_ids.discard(app_id)
@@ -221,42 +245,41 @@ class MainWindow(QMainWindow):
             self.cards[app_id].set_status(ApplicationStatus.STOPPED)
             self._start_next_queued_app()
             return
-        if not self.process_manager.get(app_id):
+        tracked = self.process_manager.get(app_id)
+        if not tracked:
             # The app is no longer tracked (stopped or crashed meanwhile).
             self.cards[app_id].set_status(ApplicationStatus.STOPPED)
             self._start_next_queued_app()
             return
-        if self.config.launcher.open_browser_after_start and state.url and app_id not in self._browser_opened_ids:
+        verified_url = self._verified_open_url(app_id, tracked)
+        if (
+            self.config.launcher.open_browser_after_start
+            and verified_url
+            and token not in self._browser_opened_tokens
+        ):
             self.cards[app_id].set_status(ApplicationStatus.STARTING, "Opening browser")
-            self._open_url(state.url)
-            self._browser_opened_ids.add(app_id)
+            self._open_url(verified_url)
+            self._browser_opened_tokens.add(token)
         self.cards[app_id].set_status(ApplicationStatus.RUNNING)
         self._start_next_queued_app()
 
-    def _start_failed(self, app_id: str, message: str, details: str) -> None:
+    def _start_failed(self, app_id: str, token: str, message: str, details: str) -> None:
+        if self._launch_tokens.get(app_id) != token:
+            self._finish_startup_accounting(app_id, token)
+            return
         if app_id in self._user_stopped_ids:
             # Expected failure: the user cancelled a starting app.
             self._user_stopped_ids.discard(app_id)
-            if app_id not in self._log_completed_ids:
-                self._active_startups = max(0, self._active_startups - 1)
-            self._starting_ids.discard(app_id)
-            self._log_completed_ids.discard(app_id)
+            self._finish_startup_accounting(app_id, token)
             self.cards[app_id].set_status(ApplicationStatus.STOPPED)
-            self._update_startup_summary()
             self._start_next_queued_app()
             return
-        if app_id in self._log_completed_ids:
-            self._starting_ids.discard(app_id)
-            self._log_completed_ids.discard(app_id)
+        if token in self._log_completed_tokens:
+            self._finish_startup_accounting(app_id, token)
             still_running = self.process_manager.get(app_id)
             self.cards[app_id].set_status(ApplicationStatus.RUNNING if still_running else ApplicationStatus.STOPPED)
-            self._update_startup_summary()
             return
-        if app_id not in self._log_completed_ids:
-            self._active_startups = max(0, self._active_startups - 1)
-        self._starting_ids.discard(app_id)
-        self._log_completed_ids.discard(app_id)
-        self._update_startup_summary()
+        self._finish_startup_accounting(app_id, token)
         LOG.error("Application failed to start: %s\n%s", message, details)
         self.cards[app_id].set_status(ApplicationStatus.FAILED)
         QMessageBox.warning(
@@ -286,7 +309,9 @@ class MainWindow(QMainWindow):
             # The startup worker is still running; remember the user's intent
             # so its eventual success/failure is treated as a clean stop.
             self._user_stopped_ids.add(app_id)
-        self._browser_opened_ids.discard(app_id)
+        token = self._launch_tokens.get(app_id)
+        if token:
+            self._browser_opened_tokens.discard(token)
         self.process_manager.stop(app_id)
         self.cards[app_id].set_status(ApplicationStatus.STOPPED)
 
@@ -304,8 +329,10 @@ class MainWindow(QMainWindow):
         self._startup_queue.clear()
         self._queued_ids.clear()
         self._starting_ids.clear()
-        self._log_completed_ids.clear()
-        self._browser_opened_ids.clear()
+        self._launch_tokens.clear()
+        self._active_launch_tokens.clear()
+        self._log_completed_tokens.clear()
+        self._browser_opened_tokens.clear()
         self._user_stopped_ids.clear()
         self.process_manager.stop_all()
         self._active_startups = 0
@@ -335,6 +362,21 @@ class MainWindow(QMainWindow):
         if not opened and os.name == "nt":
             os.startfile(url)  # type: ignore[attr-defined]
 
+    def _verified_open_url(self, app_id: str, state) -> str | None:
+        """Return a cache-busted URL only when it matches the live tracked process."""
+
+        if not state or not state.url or not state.process or state.process.poll() is not None:
+            return None
+        if urlparse(state.url).port != state.port:
+            return None
+        token = self._launch_tokens.get(app_id)
+        if not token:
+            return state.url
+        parsed = urlparse(state.url)
+        query = dict(parse_qsl(parsed.query, keep_blank_values=True))
+        query["launch_id"] = token
+        return urlunparse(parsed._replace(query=urlencode(query)))
+
     def _update_startup_summary(self) -> None:
         """Show current parallel startup activity."""
 
@@ -353,24 +395,24 @@ class MainWindow(QMainWindow):
         """Promote cards to Running as soon as Streamlit writes a ready URL."""
 
         for app_id in list(self._starting_ids):
+            token = self._launch_tokens.get(app_id)
+            if not token:
+                continue
             state = self.process_manager.get(app_id)
             if not state or not state.log_path:
                 continue
-            ready_url = HealthChecker.streamlit_ready_url_from_log(state.log_path)
+            ready_url = HealthChecker.streamlit_ready_url_from_log(state.log_path, expected_port=state.port)
             if not ready_url:
                 continue
             updated = self.process_manager.mark_running_from_url(app_id, ready_url)
             if not updated:
                 continue
-            if app_id not in self._log_completed_ids:
+            if token in self._active_launch_tokens:
+                self._active_launch_tokens.discard(token)
                 self._active_startups = max(0, self._active_startups - 1)
-                self._log_completed_ids.add(app_id)
+                self._log_completed_tokens.add(token)
             self._starting_ids.discard(app_id)
             self._update_startup_summary()
-            if self.config.launcher.open_browser_after_start and app_id not in self._browser_opened_ids:
-                self.cards[app_id].set_status(ApplicationStatus.STARTING, "Opening browser")
-                self._open_url(ready_url)
-                self._browser_opened_ids.add(app_id)
             self.cards[app_id].set_status(ApplicationStatus.RUNNING)
             self._start_next_queued_app()
 
@@ -382,7 +424,9 @@ class MainWindow(QMainWindow):
                 continue
             if state.process and state.process.poll() is not None:
                 self.process_manager.get(state.app_id)  # untracks the dead process
-                self._browser_opened_ids.discard(state.app_id)
+                token = self._launch_tokens.get(state.app_id)
+                if token:
+                    self._browser_opened_tokens.discard(token)
                 if state.app_id in self.cards:
                     self.cards[state.app_id].set_status(ApplicationStatus.FAILED)
                 LOG.warning("Application process exited unexpectedly: %s", state.app_id)

@@ -7,7 +7,7 @@
 
     What it does:
       1. Downloads a portable Python runtime into runtime\  (first time only)
-      2. Installs all app packages into that runtime         (every pull)
+      2. Installs launcher and app packages into that runtime (every pull)
       3. Prints where users should look
 
     No EXE build needed. No Python install for users. Everything runs from
@@ -43,7 +43,7 @@ if (Test-Path $Python) {
 
 # ── Step 2: Install all app packages into the shared runtime ─────────────────
 Write-Host ""
-Write-Host "[2/2] Installing app packages into shared runtime..."
+Write-Host "[2/2] Installing launcher and app packages into shared runtime..."
 & (Join-Path $PSScriptRoot "prepare_shared_runtime.ps1") -ReleaseDir $Root
 if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
 
@@ -54,6 +54,9 @@ Write-Host "  DEPLOY COMPLETE"
 Write-Host "============================================================"
 Write-Host ""
 Write-Host "Users open the launcher by double-clicking:"
+Write-Host "  $Root\START_LAUNCHER.vbs"
+Write-Host ""
+Write-Host "For debugging with a visible console, run:"
 Write-Host "  $Root\START_LAUNCHER.bat"
 Write-Host ""
 Write-Host "To update after git pull, run this script again."

@@ -8,9 +8,8 @@ from launcher.process_manager import ProcessManager
 
 
 class FakeProcess:
-    pid = 1234
-
-    def __init__(self):
+    def __init__(self, pid=1234):
+        self.pid = pid
         self.terminated = False
         self.killed = False
 
@@ -55,6 +54,7 @@ def test_records_process_state(monkeypatch, repo_root, tmp_path):
     state = manager.start(app, _env(tmp_path))
     assert state.process_id == 1234
     assert state.url.startswith("http://127.0.0.1:")
+    assert state.url == f"http://127.0.0.1:{state.port}"
 
 
 def test_does_not_start_duplicate_app(monkeypatch, repo_root, tmp_path):
@@ -71,6 +71,39 @@ def test_does_not_start_duplicate_app(monkeypatch, repo_root, tmp_path):
     second = manager.start(app, _env(tmp_path))
     assert first is second
     assert len(calls) == 1
+
+
+def test_truncates_app_log_on_each_launch(monkeypatch, repo_root, tmp_path):
+    app = discover_apps(repo_root / "apps")[0]
+    processes = [FakeProcess(pid=1111), FakeProcess(pid=2222)]
+
+    monkeypatch.setattr("subprocess.Popen", lambda *args, **kwargs: processes.pop(0))
+    manager = ProcessManager(tmp_path, health_checker=FakeHealth())
+
+    manager.start(app, _env(tmp_path))
+    log_path = tmp_path / f"{app.id}.log"
+    log_path.write_text(log_path.read_text(encoding="utf-8") + "stale-port http://127.0.0.1:63076\n", encoding="utf-8")
+
+    manager.stop(app.id)
+    manager.start(app, _env(tmp_path))
+
+    assert "stale-port" not in log_path.read_text(encoding="utf-8")
+
+
+def test_restart_produces_new_pid_and_verified_url(monkeypatch, repo_root, tmp_path):
+    app = discover_apps(repo_root / "apps")[0]
+    processes = [FakeProcess(pid=1111), FakeProcess(pid=2222)]
+
+    monkeypatch.setattr("subprocess.Popen", lambda *args, **kwargs: processes.pop(0))
+    manager = ProcessManager(tmp_path, health_checker=FakeHealth())
+
+    first = manager.start(app, _env(tmp_path))
+    second = manager.restart(app, _env(tmp_path))
+
+    assert first.process_id == 1111
+    assert second.process_id == 2222
+    assert second.url == f"http://127.0.0.1:{second.port}"
+    assert second.process.poll() is None
 
 
 def test_stops_process(monkeypatch, repo_root, tmp_path):

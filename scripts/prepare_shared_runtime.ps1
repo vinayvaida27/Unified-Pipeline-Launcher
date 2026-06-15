@@ -83,6 +83,15 @@ $Registry = Get-Content $AppsJson -Raw | ConvertFrom-Json
 $AllRequirements = @()
 $AllWheelhouses  = @()
 
+$LauncherRequirements = Join-Path $ReleaseDir "requirements-launcher.txt"
+if (Test-Path $LauncherRequirements) {
+    $AllRequirements += $LauncherRequirements
+    Write-Host "  Found launcher requirements: requirements-launcher.txt"
+} else {
+    Write-Error "Launcher requirements not found: $LauncherRequirements"
+    exit 1
+}
+
 foreach ($App in $Registry.applications) {
     if ($App.enabled -eq $false) { continue }
 
@@ -100,12 +109,6 @@ foreach ($App in $Registry.applications) {
     if (Test-Path $WheelDir) {
         $AllWheelhouses += $WheelDir
     }
-}
-
-if ($AllRequirements.Count -eq 0) {
-    Write-Host ""
-    Write-Host "No requirements.txt files found -- nothing to install."
-    exit 0
 }
 
 # ── Merge into a temp file ───────────────────────────────────────────────────
@@ -156,10 +159,10 @@ if ($ExitCode -ne 0) {
 
 # ── Verify ───────────────────────────────────────────────────────────────────
 Write-Host ""
-Write-Host "Verifying Streamlit import..."
-& $Python -c "import streamlit; print('  streamlit', streamlit.__version__, 'OK')"
+Write-Host "Verifying launcher and Streamlit imports..."
+& $Python -c "from PySide6.QtWidgets import QApplication; import streamlit; print('  PySide6 and streamlit OK')"
 if ($LASTEXITCODE -ne 0) {
-    Write-Error "Streamlit import failed after installation."
+    Write-Error "PySide6 or Streamlit import failed after installation."
     exit 1
 }
 

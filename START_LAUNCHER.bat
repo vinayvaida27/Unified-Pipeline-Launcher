@@ -1,8 +1,7 @@
 @echo off
 :: ============================================================
-:: Unified Streamlit Launcher
-:: Double-click this file to open the app dashboard.
-:: No Python install needed.
+:: Unified Streamlit Launcher (debug console)
+:: Use START_LAUNCHER.vbs for normal no-console launches.
 :: ============================================================
 
 set ROOT=%~dp0

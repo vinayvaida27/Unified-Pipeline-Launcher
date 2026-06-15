@@ -64,7 +64,7 @@ class ProcessManager:
                 env_vars.pop(variable, None)
             env_vars["PYTHONNOUSERSITE"] = "1"
             try:
-                log_handle = log_path.open("a", encoding="utf-8")
+                log_handle = log_path.open("w", encoding="utf-8")
                 log_handle.write(f"{datetime.now(timezone.utc).isoformat()} Launcher starting {app.name} {app.version}\n")
                 log_handle.write(f"Command: {' '.join(command)}\n\n")
                 log_handle.flush()
@@ -103,11 +103,6 @@ class ProcessManager:
             raise
         with self._lock:
             state.url = url
-            parsed_port = urlparse(url).port
-            if parsed_port:
-                if parsed_port != state.port:
-                    self.port_manager.release(state.port)
-                state.port = parsed_port
             state.status = ApplicationStatus.RUNNING
             return state
 
@@ -130,12 +125,11 @@ class ProcessManager:
             state = self._running.get(app_id)
             if not state:
                 return None
+            if not state.process or state.process.poll() is not None:
+                return None
+            if urlparse(url).port != state.port:
+                return None
             state.url = url
-            parsed_port = urlparse(url).port
-            if parsed_port:
-                if parsed_port != state.port:
-                    self.port_manager.release(state.port)
-                state.port = parsed_port
             state.status = ApplicationStatus.RUNNING
             return state
 

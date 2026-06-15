@@ -31,3 +31,21 @@ def test_generate_spec_uses_valid_ico_header(tmp_path):
     spec_text = spec_path.read_text(encoding="utf-8")
     assert "icon=None" not in spec_text
     assert icon_path.as_posix() in spec_text
+
+
+def test_launcher_dependencies_install_and_validate(repo_root):
+    requirements = (repo_root / "requirements-launcher.txt").read_text(encoding="utf-8")
+    setup_script = (repo_root / "scripts" / "prepare_shared_runtime.ps1").read_text(encoding="utf-8")
+
+    assert "PySide6>=6.7,<7" in requirements
+    assert "requirements-launcher.txt" in setup_script
+    assert 'from PySide6.QtWidgets import QApplication; import streamlit' in setup_script
+
+
+def test_vbs_launcher_runs_pythonw_hidden(repo_root):
+    script = (repo_root / "START_LAUNCHER.vbs").read_text(encoding="utf-8")
+
+    assert "WScript.ScriptFullName" in script
+    assert 'runtime\\pythonw.exe' in script
+    assert '""" -m launcher"' in script
+    assert "shell.Run command, 0, False" in script
