@@ -41,6 +41,20 @@
 
 **Resolution:** Added an autoresearch-style public improvement program, public quality gate, dependency updater, CI workflow, contributor/security docs, public release docs, and release verification for `requirements-launcher.txt`.
 
+### Issue ID: UDL-004
+
+**Title:** User-facing launch path must not open a terminal window
+**Severity:** HIGH
+**Status:** RESOLVED IN ITERATION 0003
+**Related tests:** build scripts, public workflow, public quality gate
+**Affected modules:** `START_LAUNCHER.vbs`, `START_LAUNCHER_DEBUG.bat`, `scripts/create_launcher_shortcut.ps1`, deployment docs/scripts
+**User-visible impact:** A visible command window looks unpolished for public and nontechnical users.
+**Observed behavior:** The repo still had a user-facing `START_LAUNCHER.bat` name, and deployments did not automatically create a no-console Windows shortcut.
+**Expected behavior:** Users double-click `START_LAUNCHER.lnk` or `START_LAUNCHER.vbs`; the batch file is debug-only and clearly named `START_LAUNCHER_DEBUG.bat`.
+**Evidence paths:** local `python -m pytest`; local `scripts/public_quality_gate.ps1`; local `scripts/create_launcher_shortcut.ps1`
+
+**Resolution:** Renamed the batch file to debug-only, made VBS launch hidden via `launcher.exe` or `runtime\pythonw.exe -m launcher --config`, added a dynamic `.lnk` creator, wired deployment to create the shortcut, and ignored generated `.lnk` files.
+
 ### Blocked Test: B1 - Clean machine without Python
 
 **Missing prerequisite:** Clean Windows machine or VM with no Python installed.  

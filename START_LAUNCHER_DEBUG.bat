@@ -1,12 +1,18 @@
 @echo off
 :: ============================================================
 :: Unified Streamlit Launcher (debug console)
-:: Use START_LAUNCHER.vbs for normal no-console launches.
+:: Use START_LAUNCHER.lnk or START_LAUNCHER.vbs for normal no-console launches.
 :: ============================================================
 
 set ROOT=%~dp0
+set EXE=%ROOT%launcher.exe
 set PYTHON=%ROOT%runtime\python.exe
 set CONFIG=%ROOT%config\launcher_config.json
+
+if exist "%EXE%" (
+    "%EXE%"
+    exit /b %ERRORLEVEL%
+)
 
 if not exist "%PYTHON%" (
     echo.
@@ -18,5 +24,5 @@ if not exist "%PYTHON%" (
     exit /b 1
 )
 
-:: Run launcher directly using the bundled runtime -- no venv needed.
-start "" /B "%PYTHON%" -m launcher --config "%CONFIG%"
+:: Debug mode intentionally uses python.exe so errors remain visible.
+"%PYTHON%" -m launcher --config "%CONFIG%"

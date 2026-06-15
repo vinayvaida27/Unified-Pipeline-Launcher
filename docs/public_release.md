@@ -12,11 +12,19 @@ git checkout main
 
 .\scripts\fetch_runtime.ps1
 .\scripts\update_dependencies.ps1
-wscript.exe .\START_LAUNCHER.vbs
+.\scripts\create_launcher_shortcut.ps1
+Start-Process .\START_LAUNCHER.lnk
 ```
 
-`START_LAUNCHER.vbs` starts `runtime\pythonw.exe -m launcher` without a visible
-console window.
+`START_LAUNCHER.lnk` targets `runtime\pythonw.exe -m launcher --config ...`
+without `cmd.exe`, PowerShell, or a visible terminal window. The shortcut is
+created on each machine because `.lnk` files contain absolute paths.
+
+If shortcut creation is blocked, use:
+
+```powershell
+wscript.exe .\START_LAUNCHER.vbs
+```
 
 ## Pulling Updates Without Rebuilding
 
@@ -26,7 +34,8 @@ git checkout main
 git pull --ff-only origin main
 
 .\scripts\update_dependencies.ps1
-wscript.exe .\START_LAUNCHER.vbs
+.\scripts\create_launcher_shortcut.ps1
+Start-Process .\START_LAUNCHER.lnk
 ```
 
 This updates only the changed files and refreshes Python libraries declared in

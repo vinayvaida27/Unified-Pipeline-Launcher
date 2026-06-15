@@ -45,7 +45,7 @@ Invoke-GateStep "compile Python sources" {
 }
 
 Invoke-GateStep "public metadata" {
-    foreach ($Path in @("README.md", "LICENSE", "CONTRIBUTING.md", "SECURITY.md", "requirements-launcher.txt")) {
+    foreach ($Path in @("README.md", "LICENSE", "CONTRIBUTING.md", "SECURITY.md", "requirements-launcher.txt", "START_LAUNCHER.vbs", "START_LAUNCHER_DEBUG.bat", "scripts\create_launcher_shortcut.ps1")) {
         if (-not (Test-Path (Join-Path $Root $Path))) {
             throw "Missing public metadata file: $Path"
         }

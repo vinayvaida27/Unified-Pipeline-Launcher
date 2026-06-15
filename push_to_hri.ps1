@@ -35,7 +35,8 @@ git commit -m "feat: network drive deployment -- shared runtime, instant launch
 - models/config_loader: add sync_to_local_cache field
 - scripts/deploy_network.ps1: one-command full deploy
 - scripts/prepare_shared_runtime.ps1: install all packages into shared runtime
-- START_LAUNCHER.bat: double-click entry point for users
+- START_LAUNCHER.lnk / START_LAUNCHER.vbs: no-console entry points for users
+- START_LAUNCHER_DEBUG.bat: visible-console troubleshooting entry point
 - tests: add shared-runtime fast-path test, fix full-flow test for venv mode"
 
 # Push

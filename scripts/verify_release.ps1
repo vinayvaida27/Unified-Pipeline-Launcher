@@ -1,7 +1,7 @@
 param([Parameter(Mandatory=$true)][string]$Path)
 
 $ErrorActionPreference = "Stop"
-$Required = @("launcher.exe","requirements-launcher.txt","config\launcher_config.json","config\platform_manifest.json","apps\apps.json","assets","runtime","docs")
+$Required = @("launcher.exe","START_LAUNCHER.vbs","START_LAUNCHER_DEBUG.bat","requirements-launcher.txt","config\launcher_config.json","config\platform_manifest.json","apps\apps.json","assets","runtime","docs")
 foreach ($item in $Required) {
   $target = Join-Path $Path $item
   if (!(Test-Path $target)) { throw "Release validation failed. Missing $item" }

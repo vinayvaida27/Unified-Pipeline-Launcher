@@ -47,8 +47,32 @@ def test_vbs_launcher_runs_pythonw_hidden(repo_root):
 
     assert "WScript.ScriptFullName" in script
     assert 'runtime\\pythonw.exe' in script
-    assert '""" -m launcher"' in script
+    assert '""" -m launcher --config """' in script
     assert "shell.Run command, 0, False" in script
+    assert "launcher.exe" in script
+
+
+def test_debug_batch_is_not_user_facing_launcher(repo_root):
+    assert not (repo_root / "START_LAUNCHER.bat").exists()
+
+    script = (repo_root / "START_LAUNCHER_DEBUG.bat").read_text(encoding="utf-8")
+    assert "debug console" in script.lower()
+    assert "START_LAUNCHER.lnk or START_LAUNCHER.vbs" in script
+    assert "python.exe" in script
+    assert "pythonw.exe" not in script
+
+
+def test_shortcut_creator_uses_pythonw_without_terminal(repo_root):
+    script = (repo_root / "scripts" / "create_launcher_shortcut.ps1").read_text(encoding="utf-8")
+
+    assert "START_LAUNCHER.lnk" in script
+    assert 'runtime\\pythonw.exe' in script
+    assert '-m launcher --config' in script
+    assert "$Shortcut.WindowStyle = 7" in script
+    assert "Start-Process $ShortcutPath" in script
+    assert "START_LAUNCHER.bat" in script
+    assert "START_LAUNCHER_DEBUG.bat" in script
+    assert "Rename-Item" in script
 
 
 def test_release_build_copies_launcher_requirements(repo_root):
@@ -57,3 +81,5 @@ def test_release_build_copies_launcher_requirements(repo_root):
 
     assert "requirements-launcher.txt" in build_script
     assert "requirements-launcher.txt" in verify_script
+    assert "START_LAUNCHER.vbs" in build_script
+    assert "START_LAUNCHER_DEBUG.bat" in build_script

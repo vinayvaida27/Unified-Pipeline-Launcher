@@ -17,3 +17,4 @@ runtime/*
 !runtime/README.md
 !runtime/.gitkeep
 *.log
+START_LAUNCHER.lnk

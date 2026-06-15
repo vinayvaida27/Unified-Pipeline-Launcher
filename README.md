@@ -78,7 +78,8 @@ git checkout main
 
 .\scripts\fetch_runtime.ps1
 .\scripts\update_dependencies.ps1
-wscript.exe .\START_LAUNCHER.vbs
+.\scripts\create_launcher_shortcut.ps1
+Start-Process .\START_LAUNCHER.lnk
 ```
 
 To pull updates later without rebuilding from scratch:
@@ -86,6 +87,13 @@ To pull updates later without rebuilding from scratch:
 ```powershell
 git pull --ff-only origin main
 .\scripts\update_dependencies.ps1
+.\scripts\create_launcher_shortcut.ps1
+Start-Process .\START_LAUNCHER.lnk
+```
+
+If Windows blocks shortcut creation, use the fallback hidden launcher:
+
+```powershell
 wscript.exe .\START_LAUNCHER.vbs
 ```
 

@@ -76,15 +76,10 @@ class ExeBuilder:
             src = self.project_root / name
             if src.exists():
                 shutil.copy2(src, self.release_dir / name)
-
-        # Simple double-click entry point for users on a network drive.
-        (self.release_dir / "START_LAUNCHER.bat").write_text(
-            "@echo off\n"
-            ":: Double-click this file to open the Unified Streamlit Launcher.\n"
-            ":: No Python install needed. Works from a network drive.\n"
-            'start "" "%~dp0launcher.exe"\n',
-            encoding="utf-8",
-        )
+        for name in ("START_LAUNCHER.vbs", "START_LAUNCHER_DEBUG.bat"):
+            src = self.project_root / name
+            if src.exists():
+                shutil.copy2(src, self.release_dir / name)
 
         (self.release_dir / "release_info.json").write_text(
             json.dumps(
@@ -121,6 +116,8 @@ class ExeBuilder:
         print("Step 7: Verifying release structure")
         required = [
             "launcher.exe",
+            "START_LAUNCHER.vbs",
+            "START_LAUNCHER_DEBUG.bat",
             "requirements-launcher.txt",
             "config/launcher_config.json",
             "config/platform_manifest.json",
@@ -147,8 +144,9 @@ class ExeBuilder:
         self.verify_release()
         print("=" * 72)
         print(f"Build complete: {self.release_dir}")
-        print("Users can run: launcher.exe or START_LAUNCHER.bat")
-        print("Network drive: run scripts/prepare_shared_runtime.ps1 once after deploy")
+        print("Users can run: launcher.exe or START_LAUNCHER.vbs")
+        print("Debug console: START_LAUNCHER_DEBUG.bat")
+        print("Network drive: run scripts/deploy_network.ps1 once after deploy")
         print("=" * 72)
         return self.release_dir
 

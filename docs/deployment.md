@@ -97,11 +97,13 @@ pull the latest files and refresh only dependencies:
 ```powershell
 git pull --ff-only origin main
 .\scripts\update_dependencies.ps1
-wscript.exe .\START_LAUNCHER.vbs
+.\scripts\create_launcher_shortcut.ps1
+Start-Process .\START_LAUNCHER.lnk
 ```
 
 This path does not rebuild the EXE. It updates requirements-driven libraries in
-the existing bundled runtime and starts the launcher through `pythonw.exe`.
+the existing bundled runtime and starts the launcher without `cmd.exe`,
+PowerShell, or a visible terminal window.
 
 ## Alternative - no bundled runtime (auto-download)
 

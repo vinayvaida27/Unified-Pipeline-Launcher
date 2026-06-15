@@ -17,6 +17,7 @@ def test_public_quality_gate_checks_dependency_workflow(repo_root):
     assert "compileall" in script
     assert "CONTRIBUTING.md" in script
     assert "prepare_shared_runtime.ps1" in script
+    assert "create_launcher_shortcut.ps1" in script
 
 
 def test_ci_runs_supported_windows_python_versions(repo_root):
@@ -43,4 +44,6 @@ def test_public_docs_explain_no_rebuild_update(repo_root):
 
     assert "git pull --ff-only origin main" in readme
     assert "update_dependencies.ps1" in readme
+    assert "START_LAUNCHER.lnk" in readme
+    assert "create_launcher_shortcut.ps1" in public_doc
     assert "does not rebuild the EXE" in public_doc
