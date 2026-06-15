@@ -27,6 +27,20 @@
 **Expected behavior:** Verifier reads `apps/apps.json`, validates registered app folders and entrypoints, and ignores template/support folders.  
 **Evidence paths:** `.autoresearch/evidence/logs/iteration-0001-verify-release.log`
 
+### Issue ID: UDL-003
+
+**Title:** Public users need a repeatable improvement and dependency update loop
+**Severity:** HIGH
+**Status:** RESOLVED IN ITERATION 0002
+**Related tests:** public workflow, build scripts, quality gate
+**Affected modules:** `.autoresearch/program.md`, `scripts/update_dependencies.ps1`, `scripts/public_quality_gate.ps1`, `.github/workflows/ci.yml`, public docs
+**User-visible impact:** Public users and contributors need a clone/update path that does not require rebuilding from scratch or manually running pip.
+**Observed behavior:** The repo had deployment scripts, but no explicit public improvement program, CI workflow, or one-command dependency refresh path for newly added libraries.
+**Expected behavior:** Contributors follow a fixed quality gate and update requirements-driven dependencies through one command. Public users can pull changed files and refresh libraries without rebuilding.
+**Evidence paths:** local `python -m pytest`; local `scripts/public_quality_gate.ps1`
+
+**Resolution:** Added an autoresearch-style public improvement program, public quality gate, dependency updater, CI workflow, contributor/security docs, public release docs, and release verification for `requirements-launcher.txt`.
+
 ### Blocked Test: B1 - Clean machine without Python
 
 **Missing prerequisite:** Clean Windows machine or VM with no Python installed.  

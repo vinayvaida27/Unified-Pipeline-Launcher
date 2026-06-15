@@ -72,6 +72,10 @@ class ExeBuilder:
             if dst.exists():
                 shutil.rmtree(dst)
             shutil.copytree(src, dst)
+        for name in ("README.md", "LICENSE", "requirements-launcher.txt"):
+            src = self.project_root / name
+            if src.exists():
+                shutil.copy2(src, self.release_dir / name)
 
         # Simple double-click entry point for users on a network drive.
         (self.release_dir / "START_LAUNCHER.bat").write_text(
@@ -117,6 +121,7 @@ class ExeBuilder:
         print("Step 7: Verifying release structure")
         required = [
             "launcher.exe",
+            "requirements-launcher.txt",
             "config/launcher_config.json",
             "config/platform_manifest.json",
             "apps/apps.json",

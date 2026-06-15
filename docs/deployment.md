@@ -91,6 +91,18 @@ users. Many users run the same `launcher.exe`; each gets a private local cache,
 runtime copy, and venvs under
 `%LOCALAPPDATA%\OrganizationName\UnifiedStreamlitPlatform\`.
 
+**Public clone / no rebuild.** For public GitHub users who already have a clone,
+pull the latest files and refresh only dependencies:
+
+```powershell
+git pull --ff-only origin main
+.\scripts\update_dependencies.ps1
+wscript.exe .\START_LAUNCHER.vbs
+```
+
+This path does not rebuild the EXE. It updates requirements-driven libraries in
+the existing bundled runtime and starts the launcher through `pythonw.exe`.
+
 ## Alternative - no bundled runtime (auto-download)
 
 If you would rather not bundle Python in the folder, enable the download
@@ -114,6 +126,24 @@ Bundling (Steps 1-2) is still preferred for offline and air-gapped sites.
 
 No Python install, no PowerShell, no admin rights. A Python already installed
 on the machine is never used.
+
+## Updating libraries after adding apps
+
+When you add a dependency, update the appropriate requirements file and refresh
+the shared runtime:
+
+```powershell
+.\scripts\update_dependencies.ps1 -Target app -AppId 01_hello_pipeline -Package "package-name>=1,<2"
+```
+
+For launcher/UI packages:
+
+```powershell
+.\scripts\update_dependencies.ps1 -Target launcher -Package "package-name>=1,<2"
+```
+
+The script installs `requirements-launcher.txt` plus app requirements and then
+validates `PySide6` and `streamlit`.
 
 ## Verify the "never use system Python" guarantee
 

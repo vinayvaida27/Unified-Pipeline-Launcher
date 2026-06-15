@@ -49,3 +49,11 @@ def test_vbs_launcher_runs_pythonw_hidden(repo_root):
     assert 'runtime\\pythonw.exe' in script
     assert '""" -m launcher"' in script
     assert "shell.Run command, 0, False" in script
+
+
+def test_release_build_copies_launcher_requirements(repo_root):
+    build_script = (repo_root / "build_scripts" / "build.py").read_text(encoding="utf-8")
+    verify_script = (repo_root / "scripts" / "verify_release.ps1").read_text(encoding="utf-8")
+
+    assert "requirements-launcher.txt" in build_script
+    assert "requirements-launcher.txt" in verify_script

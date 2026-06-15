@@ -67,6 +67,28 @@ Users can copy that folder and double-click `launcher.exe`.
 
 The same folder can be published on a network drive. On startup, the bundled runtime and registered app folders are copied into each user's local cache before Streamlit starts, so apps are centrally distributed but locally executed.
 
+## Public Clone Quickstart
+
+For public GitHub use without rebuilding an EXE:
+
+```powershell
+git clone https://github.com/vinayvaida27/Unified-Streamlit-Launcher.git
+cd Unified-Streamlit-Launcher
+git checkout main
+
+.\scripts\fetch_runtime.ps1
+.\scripts\update_dependencies.ps1
+wscript.exe .\START_LAUNCHER.vbs
+```
+
+To pull updates later without rebuilding from scratch:
+
+```powershell
+git pull --ff-only origin main
+.\scripts\update_dependencies.ps1
+wscript.exe .\START_LAUNCHER.vbs
+```
+
 ## Add Apps After Building
 
 The apps are external to the executable. After a release is built, you can add or replace apps in the release folder:
@@ -83,6 +105,29 @@ build/Unified-Streamlit-Launcher/apps/
 
 Then add the app to `apps/apps.json` and restart `launcher.exe`.
 
+## Updating Python Libraries
+
+Requirements files are the source of truth. Do not rely on manual `pip install`
+commands that only affect one machine.
+
+Add or update a launcher dependency:
+
+```powershell
+.\scripts\update_dependencies.ps1 -Target launcher -Package "package-name>=1,<2"
+```
+
+Add or update an app dependency:
+
+```powershell
+.\scripts\update_dependencies.ps1 -Target app -AppId 01_hello_pipeline -Package "package-name>=1,<2"
+```
+
+Refresh everything already declared:
+
+```powershell
+.\scripts\update_dependencies.ps1
+```
+
 ## Documentation
 
 - [Quickstart](docs/quickstart.md)
@@ -90,6 +135,7 @@ Then add the app to `apps/apps.json` and restart `launcher.exe`.
 - [Creating apps](docs/creating_apps.md)
 - [App development](docs/APP_DEVELOPMENT.md)
 - [Deployment](docs/deployment.md)
+- [Public release workflow](docs/public_release.md)
 - [Release process](docs/release_process.md)
 - [Troubleshooting](docs/troubleshooting.md)
 - [Architecture](docs/architecture.md)
@@ -97,7 +143,7 @@ Then add the app to `apps/apps.json` and restart `launcher.exe`.
 ## Validation
 
 ```powershell
-python -m pytest
+.\scripts\public_quality_gate.ps1
 ```
 
-The framework includes tests for config loading, app registry validation, path security, environment paths, process launch commands, health checks, and updates.
+The framework includes tests for config loading, app registry validation, path security, environment paths, process launch commands, health checks, dependency update wiring, and public release checks.
