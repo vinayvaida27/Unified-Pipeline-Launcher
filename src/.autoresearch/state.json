@@ -1,0 +1,20 @@
+{
+  "run_id": "unified-launcher-20260612-baseline",
+  "repository": "Unified-Streamlit-Launcher",
+  "baseline_commit": "69a7277",
+  "best_commit": "working-tree",
+  "iteration": 1,
+  "release_ready": false,
+  "current_score": {
+    "critical_open": 0,
+    "high_open": 0,
+    "required_failures": 0,
+    "security_failures": 0,
+    "weighted_pass_score": 0.75
+  },
+  "passing_tests": ["pytest", "compileall", "build_exe", "verify_release"],
+  "failing_tests": [],
+  "blocked_tests": ["clean_machine_no_python", "representative_network_share", "multi_user", "code_signing"],
+  "last_completed_utc": "2026-06-12T14:02:00Z",
+  "best_artifact_sha256": "F7BDC9D3E42884EA18C2A2F2DDC0E5CAC530ECC49D06B034A0538E2B6FA61DC9"
+}

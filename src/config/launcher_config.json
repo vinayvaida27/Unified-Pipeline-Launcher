@@ -1,0 +1,49 @@
+{
+  "schema_version": 1,
+  "platform_name": "Unified Pipeline Launcher",
+  "organization_name": "OrganizationName",
+  "window": {
+    "width": 1200,
+    "height": 760,
+    "minimum_width": 900,
+    "minimum_height": 600
+  },
+  "paths": {
+    "apps_directory": "../../apps",
+    "runtime_python": "../runtime/python.exe",
+    "local_cache_directory": "%LOCALAPPDATA%/OrganizationName/UnifiedStreamlitPlatform",
+    "network_release_directory": "",
+    "shared_data_directory": "",
+    "user_output_directory": ""
+  },
+  "runtime": {
+    "allow_development_interpreter_fallback": true,
+    "create_virtual_environments": false,
+    "environment_strategy": "per_app_per_version",
+    "offline_install_preferred": true,
+    "sync_to_local_cache": false,
+    "download": {
+      "enabled": false,
+      "version": "3.11.9",
+      "url": "https://globalcdn.nuget.org/packages/python.3.11.9.nupkg",
+      "sha256": ""
+    }
+  },
+  "updates": {
+    "enabled": false,
+    "check_on_startup": true,
+    "retain_previous_versions": 1,
+    "verify_sha256": true
+  },
+  "launcher": {
+    "open_browser_after_start": true,
+    "minimize_to_tray": false,
+    "stop_apps_on_exit": true,
+    "maximum_parallel_startups": 10
+  },
+  "logging": {
+    "level": "INFO",
+    "maximum_file_size_mb": 5,
+    "backup_count": 5
+  }
+}

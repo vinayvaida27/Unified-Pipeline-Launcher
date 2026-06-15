@@ -1,16 +1,21 @@
 Option Explicit
 
-Dim fso, shell, root, launcherExe, pythonw, config, command
+Dim fso, shell, root, srcRoot, launcherExe, pythonw, config, command
 
 Set fso = CreateObject("Scripting.FileSystemObject")
 Set shell = CreateObject("WScript.Shell")
 
 root = fso.GetParentFolderName(WScript.ScriptFullName)
 launcherExe = fso.BuildPath(root, "launcher.exe")
-pythonw = fso.BuildPath(root, "runtime\pythonw.exe")
-config = fso.BuildPath(root, "config\launcher_config.json")
+srcRoot = fso.BuildPath(root, "src")
+If Not fso.FolderExists(srcRoot) Then
+    srcRoot = root
+End If
 
-shell.CurrentDirectory = root
+pythonw = fso.BuildPath(srcRoot, "runtime\pythonw.exe")
+config = fso.BuildPath(srcRoot, "config\launcher_config.json")
+
+shell.CurrentDirectory = srcRoot
 
 If fso.FileExists(launcherExe) Then
     command = """" & launcherExe & """"

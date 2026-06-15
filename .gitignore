@@ -1,9 +1,14 @@
 .venv/
+src/.venv/
+# Keep release Markdown limited to the root README.
+*.md
+!/README.md
 __pycache__/
 *.py[cod]
 *.egg-info/
 .pytest_cache/
 .autoresearch/evidence/
+src/.autoresearch/evidence/
 .mypy_cache/
 dist/
 build/Unified-Streamlit-Launcher/
@@ -14,7 +19,12 @@ logs/
 state/
 staging/
 runtime/*
-!runtime/README.md
 !runtime/.gitkeep
+src/runtime/*
+!src/runtime/.gitkeep
+src/build/Unified-Streamlit-Launcher/
+src/build/pyinstaller/
+src/build/pyinstaller-work/
+src/build/*.spec
 *.log
 START_LAUNCHER.lnk
