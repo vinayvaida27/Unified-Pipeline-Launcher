@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import os
-from urllib.parse import urlparse
 import subprocess
 import sys
 import threading
@@ -64,20 +63,20 @@ class ProcessManager:
                 env_vars.pop(variable, None)
             env_vars["PYTHONNOUSERSITE"] = "1"
             try:
-                log_handle = log_path.open("w", encoding="utf-8")
-                log_handle.write(f"{datetime.now(timezone.utc).isoformat()} Launcher starting {app.name} {app.version}\n")
-                log_handle.write(f"Command: {' '.join(command)}\n\n")
-                log_handle.flush()
-                process = subprocess.Popen(
-                    command,
-                    cwd=str(app.app_dir),
-                    stdout=log_handle,
-                    stderr=subprocess.STDOUT,
-                    stdin=subprocess.DEVNULL,
-                    shell=False,
-                    env=env_vars,
-                    creationflags=creationflags,
-                )
+                with log_path.open("w", encoding="utf-8") as log_handle:
+                    log_handle.write(f"{datetime.now(timezone.utc).isoformat()} Launcher starting {app.name} {app.version}\n")
+                    log_handle.write(f"Command: {' '.join(command)}\n\n")
+                    log_handle.flush()
+                    process = subprocess.Popen(
+                        command,
+                        cwd=str(app.app_dir),
+                        stdout=log_handle,
+                        stderr=subprocess.STDOUT,
+                        stdin=subprocess.DEVNULL,
+                        shell=False,
+                        env=env_vars,
+                        creationflags=creationflags,
+                    )
             except OSError as exc:
                 self.port_manager.release(port)
                 raise ApplicationStartError(str(exc)) from exc
@@ -127,7 +126,7 @@ class ProcessManager:
                 return None
             if not state.process or state.process.poll() is not None:
                 return None
-            if urlparse(url).port != state.port:
+            if HealthChecker._port_from_url(url) != state.port:
                 return None
             state.url = url
             state.status = ApplicationStatus.RUNNING

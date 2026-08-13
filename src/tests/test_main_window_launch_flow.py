@@ -166,6 +166,22 @@ def test_open_running_app_does_not_restart(qt_app, config, repo_root, tmp_path, 
     assert opened == [f"http://127.0.0.1:{state.port}"]
 
 
+def test_open_running_app_ignores_malformed_url(qt_app, config, repo_root, tmp_path, monkeypatch):
+    app = _app(repo_root)
+    state = _state(app, tmp_path)
+    state.url = "http://127.0.0.1:bad"
+    window = _window(qt_app, config, app, FakeProcessManager(state))
+    opened = []
+    starts = []
+    monkeypatch.setattr(window, "_open_url", opened.append)
+    monkeypatch.setattr(window, "_start_app_now", starts.append)
+
+    window.open_app(app.id)
+
+    assert opened == []
+    assert starts == []
+
+
 def test_duplicate_start_worker_is_prevented(qt_app, config, repo_root, tmp_path, monkeypatch):
     app = _app(repo_root)
     window = _window(qt_app, config, app, FakeProcessManager())

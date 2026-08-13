@@ -125,3 +125,12 @@ def test_cleans_state_after_crash(monkeypatch, repo_root, tmp_path):
     manager.start(app, _env(tmp_path))
     fake.terminated = True
     assert manager.get(app.id) is None
+
+
+def test_mark_running_ignores_malformed_url(monkeypatch, repo_root, tmp_path):
+    app = discover_apps(repo_root / "apps")[0]
+    monkeypatch.setattr("subprocess.Popen", lambda *args, **kwargs: FakeProcess())
+    manager = ProcessManager(tmp_path, health_checker=FakeHealth())
+    manager.start(app, _env(tmp_path))
+
+    assert manager.mark_running_from_url(app.id, "http://127.0.0.1:bad") is None

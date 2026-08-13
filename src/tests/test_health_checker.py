@@ -94,3 +94,7 @@ def test_log_parser_ignores_urls_from_other_ports(tmp_path):
     )
 
     assert HealthChecker.streamlit_ready_url_from_log(log_path, expected_port=expected_port) is None
+
+
+def test_port_parser_ignores_bad_ports():
+    assert HealthChecker._port_from_url("http://127.0.0.1:bad") is None

@@ -69,7 +69,7 @@ class HealthChecker:
         """Extract the integer port from a URL, or None on parse failure."""
         try:
             return urlparse(url).port
-        except Exception:
+        except ValueError:
             return None
 
     @staticmethod
@@ -79,11 +79,6 @@ class HealthChecker:
                 return 200 <= int(response.status) < 500
         except (OSError, URLError):
             return False
-
-    @staticmethod
-    def _streamlit_log_reports_ready(log_path: Path, root_url: str) -> bool:
-        """Return True when Streamlit has written the *expected* ready URL to the log."""
-        return HealthChecker.streamlit_ready_url_from_log(log_path, expected_port=urlparse(root_url).port) == root_url
 
     @staticmethod
     def streamlit_ready_url_from_log(log_path: Path, expected_port: int | None = None) -> str | None:

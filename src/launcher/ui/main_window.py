@@ -367,7 +367,7 @@ class MainWindow(QMainWindow):
 
         if not state or not state.url or not state.process or state.process.poll() is not None:
             return None
-        if urlparse(state.url).port != state.port:
+        if HealthChecker._port_from_url(state.url) != state.port:
             return None
         token = self._launch_tokens.get(app_id)
         if not token:
