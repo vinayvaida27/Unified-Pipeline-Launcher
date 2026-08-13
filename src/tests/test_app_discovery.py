@@ -2,7 +2,10 @@ from __future__ import annotations
 
 import json
 
+import pytest
+
 from launcher.app_discovery import discover_apps
+from launcher.exceptions import ManifestValidationError
 
 
 def _registry_path(apps_dir):
@@ -55,3 +58,10 @@ def test_skips_disabled_apps(copied_apps):
     _write_registry(copied_apps, data)
     apps = discover_apps(copied_apps)
     assert len(apps) == 9
+
+
+def test_malformed_registry_raises_launcher_error(copied_apps):
+    _registry_path(copied_apps).write_text("{not-json", encoding="utf-8")
+
+    with pytest.raises(ManifestValidationError, match="Could not read app registry"):
+        discover_apps(copied_apps)

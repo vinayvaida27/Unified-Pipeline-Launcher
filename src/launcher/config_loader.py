@@ -34,7 +34,10 @@ def _optional_path(value: str, base_dir: Path) -> Path | None:
 def load_platform_config(config_path: Path) -> PlatformConfig:
     """Load and validate launcher configuration."""
 
-    data = read_json(config_path)
+    try:
+        data = read_json(config_path)
+    except (OSError, ValueError) as exc:
+        raise ConfigurationError(f"Could not read launcher configuration: {config_path}") from exc
     if data.get("schema_version") != SUPPORTED_SCHEMA_VERSION:
         raise ConfigurationError("Unsupported launcher configuration schema version")
     base_dir = config_path.resolve().parent

@@ -24,3 +24,8 @@ include = ["launcher*"]
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 pythonpath = ["."]
+markers = [
+  "integration: exercises real subprocesses and local sockets",
+  "e2e: drives a real browser against a launched application",
+  "performance: runs opt-in timing and resource measurements",
+]

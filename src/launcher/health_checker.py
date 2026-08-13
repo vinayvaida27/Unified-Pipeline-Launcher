@@ -12,6 +12,7 @@ from urllib.request import urlopen
 
 from .constants import HEALTH_PATH
 from .exceptions import ApplicationHealthCheckError
+from .path_utils import read_text_tail
 
 
 class HealthChecker:
@@ -46,16 +47,14 @@ class HealthChecker:
                     f"Streamlit exited before becoming healthy with code {exit_code}"
                 )
 
-            # Fast path: if the log shows *our* port is ready, confirm via HTTP
-            # then return.  A URL with a different port is from a stale launch;
-            # skip it and keep polling our health endpoint.
+            # A successful response on a recently released port may belong to
+            # another process. When launch logs are available, require both the
+            # expected-port readiness marker and Streamlit's health endpoint.
             if log_path:
                 log_url = self.streamlit_ready_url_from_log(log_path, expected_port=port)
-                if log_url:
-                    if self._url_ok(health_url) or self._url_ok(root_url):
-                        return root_url
-
-            if self._url_ok(health_url) or self._url_ok(root_url):
+                if log_url and self._url_ok(health_url):
+                    return root_url
+            elif self._url_ok(health_url):
                 return root_url
 
             time.sleep(0.1)
@@ -76,7 +75,7 @@ class HealthChecker:
     def _url_ok(url: str) -> bool:
         try:
             with urlopen(url, timeout=0.2) as response:
-                return 200 <= int(response.status) < 500
+                return 200 <= int(response.status) < 300 and response.read(16).strip().lower() == b"ok"
         except (OSError, URLError):
             return False
 
@@ -84,7 +83,7 @@ class HealthChecker:
     def streamlit_ready_url_from_log(log_path: Path, expected_port: int | None = None) -> str | None:
         """Return the latest ready localhost URL for the expected port, or None."""
         try:
-            text = log_path.read_text(encoding="utf-8", errors="replace")[-8000:]
+            text = read_text_tail(log_path, 8000)
         except OSError:
             return None
         if "You can now view your Streamlit app in your browser." not in text:

@@ -21,7 +21,7 @@ def test_public_quality_gate_checks_dependency_workflow(source_root):
 
 
 def test_ci_runs_supported_windows_python_versions(source_root):
-    workflow = (source_root / ".github" / "workflows" / "ci.yml").read_text(encoding="utf-8")
+    workflow = (source_root.parent / ".github" / "workflows" / "ci.yml").read_text(encoding="utf-8")
 
     assert "windows-latest" in workflow
     assert '"3.11"' in workflow
@@ -38,7 +38,7 @@ def test_public_readme_explains_no_rebuild_update(repo_root):
     assert "START_LAUNCHER.lnk" in readme
 
 
-def test_only_root_readme_is_tracked_markdown(repo_root):
+def test_only_approved_root_markdown_is_tracked(repo_root):
     import subprocess
 
     result = subprocess.run(
@@ -49,4 +49,4 @@ def test_only_root_readme_is_tracked_markdown(repo_root):
         text=True,
     )
 
-    assert result.stdout.splitlines() == ["README.md"]
+    assert set(result.stdout.splitlines()) <= {"README.md", "TEST_AUDIT.md"}

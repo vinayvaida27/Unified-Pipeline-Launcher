@@ -7,6 +7,8 @@ from pathlib import Path
 from PySide6.QtCore import QTimer
 from PySide6.QtWidgets import QDialog, QPlainTextEdit, QVBoxLayout
 
+from ..path_utils import read_text_tail
+
 
 class LogDialog(QDialog):
     """Simple read-only log viewer."""
@@ -30,7 +32,7 @@ class LogDialog(QDialog):
         """Refresh the visible log content."""
 
         if self.log_path and self.log_path.exists():
-            self.text.setPlainText(self.log_path.read_text(encoding="utf-8", errors="replace")[-120000:])
+            self.text.setPlainText(read_text_tail(self.log_path, 120000))
             self.text.verticalScrollBar().setValue(self.text.verticalScrollBar().maximum())
         else:
             self.text.setPlainText("No log file is available yet.")

@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import subprocess
 from pathlib import Path
 
 from launcher.app_discovery import discover_apps
@@ -30,6 +31,13 @@ class FakeProcess:
 class FakeHealth:
     def wait_until_healthy(self, process, port, timeout_seconds, log_path=None):
         return f"http://127.0.0.1:{port}"
+
+
+class StubbornFakeProcess(FakeProcess):
+    def wait(self, timeout=None):
+        if not self.killed:
+            raise subprocess.TimeoutExpired("fixture", timeout)
+        return 0
 
 
 def _env(tmp_path: Path):
@@ -114,6 +122,20 @@ def test_stops_process(monkeypatch, repo_root, tmp_path):
     manager.start(app, _env(tmp_path))
     manager.stop(app.id)
     assert fake.terminated
+    assert manager.get(app.id) is None
+
+
+def test_kills_process_that_does_not_stop_before_timeout(monkeypatch, repo_root, tmp_path):
+    app = discover_apps(repo_root / "apps")[0]
+    fake = StubbornFakeProcess()
+    monkeypatch.setattr("subprocess.Popen", lambda *args, **kwargs: fake)
+    manager = ProcessManager(tmp_path, health_checker=FakeHealth())
+    manager.start(app, _env(tmp_path))
+
+    manager.stop(app.id, timeout_seconds=0)
+
+    assert fake.terminated
+    assert fake.killed
     assert manager.get(app.id) is None
 
 

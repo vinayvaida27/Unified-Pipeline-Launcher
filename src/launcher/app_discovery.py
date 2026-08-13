@@ -119,7 +119,10 @@ def _load_app_manifest_data(app_dir: Path, data: dict) -> ApplicationManifest:
 
 def _discover_from_registry(apps_directory: Path, include_disabled: bool) -> list[ApplicationManifest]:
     registry_path = apps_directory / "apps.json"
-    registry = read_json(registry_path)
+    try:
+        registry = read_json(registry_path)
+    except (OSError, ValueError) as exc:
+        raise ManifestValidationError(f"Could not read app registry: {registry_path}") from exc
     if registry.get("schema_version") != SUPPORTED_SCHEMA_VERSION:
         raise ManifestValidationError("Unsupported app registry schema version")
     defaults = registry.get("defaults", {})

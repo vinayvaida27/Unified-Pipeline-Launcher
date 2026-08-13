@@ -1,6 +1,8 @@
 from __future__ import annotations
 
 import os
+import threading
+import time
 from datetime import datetime, timezone
 
 import pytest
@@ -8,7 +10,7 @@ import pytest
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 
 pytest.importorskip("PySide6")
-from PySide6.QtWidgets import QApplication
+from PySide6.QtWidgets import QApplication, QMessageBox
 
 from launcher.app_discovery import discover_apps
 from launcher.models import ApplicationRuntimeState, ApplicationStatus
@@ -26,6 +28,17 @@ class FakeProcess:
 
 class FakeEnvironmentManager:
     pass
+
+
+class BlockingEnvironmentManager:
+    def __init__(self):
+        self.entered = threading.Event()
+        self.release = threading.Event()
+
+    def ensure_environment(self, app, progress):
+        self.entered.set()
+        assert self.release.wait(timeout=5)
+        return object()
 
 
 class FakeProcessManager:
@@ -59,6 +72,16 @@ class FakeProcessManager:
         return state
 
 
+class RecordingProcessManager(FakeProcessManager):
+    def __init__(self):
+        super().__init__()
+        self.start_calls = []
+
+    def start(self, app, environment):
+        self.start_calls.append((app, environment))
+        return None
+
+
 @pytest.fixture(scope="session")
 def qt_app():
     app = QApplication.instance() or QApplication([])
@@ -88,7 +111,6 @@ def _state(app, tmp_path, port=63260, pid=1234):
 
 def _window(qt_app, config, app, process_manager):
     window = MainWindow(config, [app], FakeEnvironmentManager(), process_manager)
-    window.ready_log_timer.stop()
     window.liveness_timer.stop()
     return window
 
@@ -108,32 +130,6 @@ def test_only_one_browser_open_occurs_per_launch(qt_app, config, repo_root, tmp_
 
     assert len(opened) == 1
     assert opened[0] == f"http://127.0.0.1:{state.port}?launch_id={token}"
-
-
-def test_sync_ready_logs_does_not_open_browser(qt_app, config, repo_root, tmp_path, monkeypatch):
-    app = _app(repo_root)
-    state = _state(app, tmp_path)
-    state.status = ApplicationStatus.STARTING
-    state.url = None
-    state.log_path.write_text(
-        "You can now view your Streamlit app in your browser.\n"
-        f"URL: http://127.0.0.1:{state.port}\n",
-        encoding="utf-8",
-    )
-    process_manager = FakeProcessManager(state)
-    window = _window(qt_app, config, app, process_manager)
-    opened = []
-    monkeypatch.setattr(window, "_open_url", opened.append)
-    token = "launch-1"
-    window._launch_tokens[app.id] = token
-    window._starting_ids.add(app.id)
-    window._active_launch_tokens.add(token)
-    window._active_startups = 1
-
-    window._sync_ready_logs()
-
-    assert opened == []
-    assert state.status == ApplicationStatus.RUNNING
 
 
 def test_stale_worker_completion_is_ignored(qt_app, config, repo_root, tmp_path, monkeypatch):
@@ -192,3 +188,50 @@ def test_duplicate_start_worker_is_prevented(qt_app, config, repo_root, tmp_path
     window.open_app(app.id)
 
     assert starts == []
+
+
+def test_stop_all_cancels_an_inflight_environment_start(qt_app, config, repo_root):
+    app = _app(repo_root)
+    environment_manager = BlockingEnvironmentManager()
+    process_manager = RecordingProcessManager()
+    window = MainWindow(config, [app], environment_manager, process_manager)
+    window.liveness_timer.stop()
+
+    window.open_app(app.id)
+    assert environment_manager.entered.wait(timeout=5)
+    window.stop_all_apps()
+    environment_manager.release.set()
+
+    deadline = time.monotonic() + 5
+    while window._active_startups and time.monotonic() < deadline:
+        qt_app.processEvents()
+        time.sleep(0.01)
+
+    assert window._active_startups == 0
+    assert process_manager.start_calls == []
+
+
+def test_close_cancels_an_inflight_environment_start(qt_app, config, repo_root, monkeypatch):
+    app = _app(repo_root)
+    environment_manager = BlockingEnvironmentManager()
+    process_manager = RecordingProcessManager()
+    window = MainWindow(config, [app], environment_manager, process_manager)
+    window.liveness_timer.stop()
+    monkeypatch.setattr(
+        QMessageBox,
+        "question",
+        staticmethod(lambda *args, **kwargs: QMessageBox.StandardButton.Yes),
+    )
+
+    window.open_app(app.id)
+    assert environment_manager.entered.wait(timeout=5)
+    window.close()
+    environment_manager.release.set()
+
+    deadline = time.monotonic() + 5
+    while window._active_startups and time.monotonic() < deadline:
+        qt_app.processEvents()
+        time.sleep(0.01)
+
+    assert window._active_startups == 0
+    assert process_manager.start_calls == []

@@ -39,3 +39,11 @@ def test_invalid_schema_version_fails(tmp_path, source_root):
     path.write_text(json.dumps(data), encoding="utf-8")
     with pytest.raises(ConfigurationError):
         load_platform_config(path)
+
+
+def test_malformed_json_raises_configuration_error(tmp_path):
+    path = tmp_path / "bad.json"
+    path.write_text("{not-json", encoding="utf-8")
+
+    with pytest.raises(ConfigurationError, match="Could not read launcher configuration"):
+        load_platform_config(path)

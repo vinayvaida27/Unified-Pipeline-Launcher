@@ -65,7 +65,7 @@ def test_succeeds_when_streamlit_log_reports_ready(tmp_path, monkeypatch):
     assert url == f"http://127.0.0.1:{port}"
 
 
-def test_old_log_port_never_replaces_current_allocated_port(tmp_path, monkeypatch):
+def test_old_log_port_does_not_confirm_current_allocated_port(tmp_path, monkeypatch):
     requested_port = PortManager().get_available_port()
     stale_port = PortManager().get_available_port()
     log_path = tmp_path / "app.log"
@@ -79,8 +79,8 @@ def test_old_log_port_never_replaces_current_allocated_port(tmp_path, monkeypatc
         "_url_ok",
         staticmethod(lambda url: url == f"http://127.0.0.1:{requested_port}/_stcore/health"),
     )
-    url = HealthChecker().wait_until_healthy(FakeProcess(), requested_port, 1, log_path)
-    assert url == f"http://127.0.0.1:{requested_port}"
+    with pytest.raises(ApplicationHealthCheckError):
+        HealthChecker().wait_until_healthy(FakeProcess(), requested_port, 1, log_path)
 
 
 def test_log_parser_ignores_urls_from_other_ports(tmp_path):

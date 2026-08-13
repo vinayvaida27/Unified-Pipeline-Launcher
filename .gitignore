@@ -3,6 +3,8 @@ src/.venv/
 # Keep release Markdown limited to the root README.
 *.md
 !/README.md
+!/TEST_AUDIT.md
+.coverage
 __pycache__/
 *.py[cod]
 *.egg-info/

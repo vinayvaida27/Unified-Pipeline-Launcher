@@ -63,6 +63,15 @@ def read_json(path: Path) -> dict[str, Any]:
     return data
 
 
+def read_text_tail(path: Path, max_bytes: int) -> str:
+    """Decode at most the final ``max_bytes`` of a UTF-8 text file."""
+
+    with path.open("rb") as handle:
+        handle.seek(0, os.SEEK_END)
+        handle.seek(max(0, handle.tell() - max_bytes))
+        return handle.read().decode("utf-8", errors="replace")
+
+
 def atomic_write_json(path: Path, data: dict[str, Any]) -> None:
     """Atomically write JSON beside the target file."""
 
