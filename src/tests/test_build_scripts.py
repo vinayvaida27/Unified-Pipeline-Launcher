@@ -47,13 +47,14 @@ def test_launcher_dependencies_install_and_validate(source_root):
     assert 'from PySide6.QtWidgets import QApplication; import streamlit' in setup_script
 
 
-def test_vbs_launcher_runs_pythonw_hidden(repo_root):
+def test_vbs_launcher_hides_console_without_hiding_gui(repo_root):
     script = (repo_root / "START_LAUNCHER.vbs").read_text(encoding="utf-8")
 
     assert "WScript.ScriptFullName" in script
     assert 'runtime\\pythonw.exe' in script
     assert '""" -m launcher --config """' in script
-    assert "shell.Run command, 0, False" in script
+    assert "shell.Run command, 1, False" in script
+    assert "shell.Run command, 0, False" not in script
     assert "launcher.exe" in script
 
 
@@ -92,7 +93,7 @@ def test_vbs_bootstrap_prefers_matching_local_runtime_cache(repo_root):
 @pytest.mark.skipif(os.name != "nt", reason="VBScript bootstrap is Windows-specific")
 def test_vbs_bootstrap_parses_without_launching(repo_root, tmp_path):
     script = (repo_root / "START_LAUNCHER.vbs").read_text(encoding="utf-8")
-    script = script.replace("shell.Run command, 0, False", "WScript.Echo pythonw")
+    script = script.replace("shell.Run command, 1, False", "WScript.Echo pythonw")
     probe = tmp_path / "START_LAUNCHER.vbs"
     probe.write_text(script, encoding="utf-8")
     (tmp_path / "runtime").mkdir()

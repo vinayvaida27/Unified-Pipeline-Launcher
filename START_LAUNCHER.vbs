@@ -39,7 +39,7 @@ Else
     WScript.Quit 1
 End If
 
-shell.Run command, 0, False
+shell.Run command, 1, False
 
 Function LocalCacheDirectory(configPath)
     Dim handle, text, expression, matches, value
