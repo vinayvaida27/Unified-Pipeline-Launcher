@@ -42,7 +42,7 @@ def test_only_approved_root_markdown_is_tracked(repo_root):
     import subprocess
 
     result = subprocess.run(
-        ["git", "ls-files", "--", "*.md"],
+        ["git", "ls-files", "--", ":(top,glob)*.md"],
         cwd=repo_root,
         check=True,
         capture_output=True,

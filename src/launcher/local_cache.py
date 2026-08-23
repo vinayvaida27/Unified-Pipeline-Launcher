@@ -27,6 +27,7 @@ class LocalCacheManager:
         self.logs_dir = base_dir / "logs"
         self.state_dir = base_dir / "state"
         self.staging_dir = base_dir / "staging"
+        self.runtime_cache_refreshed = False
 
     def ensure_directories(self) -> None:
         """Create expected local cache directories."""
@@ -49,6 +50,7 @@ class LocalCacheManager:
         should execute from local disk. This returns the cached python.exe path.
         """
 
+        self.runtime_cache_refreshed = False
         runtime_python = runtime_python.resolve()
         source_runtime_dir = runtime_python.parent
         try:
@@ -57,17 +59,21 @@ class LocalCacheManager:
         except ValueError:
             pass
 
-        fingerprint = self._fingerprint_directory_metadata(source_runtime_dir)
+        fingerprint = self._runtime_source_fingerprint(source_runtime_dir, runtime_python)
         cached_runtime_dir = self.runtime_dir / "current"
         cached_python = cached_runtime_dir / runtime_python.name
         marker_path = cached_runtime_dir / ".runtime_cache_ready.json"
-        if not self._cache_marker_matches(marker_path, fingerprint):
+        if not cached_python.exists() or not self._cache_marker_matches(marker_path, fingerprint):
             cached_runtime_dir.parent.mkdir(parents=True, exist_ok=True)
             temp_dir = cached_runtime_dir.parent / ".current.staging"
             self._force_rmtree(temp_dir)
-            self._force_rmtree(cached_runtime_dir)
             shutil.copytree(source_runtime_dir, temp_dir, ignore=self._copy_ignore)
+            self._force_rmtree(cached_runtime_dir)
             self._safe_replace(temp_dir, cached_runtime_dir)
+            (cached_runtime_dir / ".runtime_source_path.txt").write_text(
+                str(source_runtime_dir),
+                encoding="utf-8",
+            )
             atomic_write_json(
                 marker_path,
                 {
@@ -77,6 +83,7 @@ class LocalCacheManager:
                     "cached_at": datetime.now(timezone.utc).isoformat(),
                 },
             )
+            self.runtime_cache_refreshed = True
         return cached_python.resolve()
 
     def sync_apps_to_local_cache(self, apps: list[ApplicationManifest]) -> list[ApplicationManifest]:
@@ -94,12 +101,12 @@ class LocalCacheManager:
         source_fingerprint = self._fingerprint_directory(app.app_dir)
         cached_app_dir = self.apps_dir / app.id / app.version
         marker_path = cached_app_dir / ".app_cache_ready.json"
-        if not self._cache_marker_matches(marker_path, source_fingerprint):
+        if not self._cache_marker_matches(marker_path, source_fingerprint, cached_app_dir):
             cached_app_dir.parent.mkdir(parents=True, exist_ok=True)
             temp_dir = cached_app_dir.parent / f".{cached_app_dir.name}.staging"
             self._force_rmtree(temp_dir)
-            self._force_rmtree(cached_app_dir)
             shutil.copytree(app.app_dir, temp_dir, ignore=self._copy_ignore)
+            self._force_rmtree(cached_app_dir)
             self._safe_replace(temp_dir, cached_app_dir)
             atomic_write_json(
                 marker_path,
@@ -108,6 +115,7 @@ class LocalCacheManager:
                     "app_version": app.version,
                     "source_path": str(app.app_dir),
                     "source_fingerprint": source_fingerprint,
+                    "cached_fingerprint": self._fingerprint_directory(cached_app_dir),
                     "cached_at": datetime.now(timezone.utc).isoformat(),
                 },
             )
@@ -186,15 +194,17 @@ class LocalCacheManager:
         ignored = {"__pycache__", ".pytest_cache", ".mypy_cache", ".streamlit"}
         return {name for name in names if name in ignored or name.endswith((".pyc", ".pyo", ".log"))}
 
-    @staticmethod
-    def _cache_marker_matches(marker_path: Path, fingerprint: str) -> bool:
+    @classmethod
+    def _cache_marker_matches(cls, marker_path: Path, fingerprint: str, cached_dir: Path | None = None) -> bool:
         if not marker_path.exists():
             return False
         try:
             marker = read_json(marker_path)
         except (OSError, ValueError):
             return False
-        return marker.get("source_fingerprint") == fingerprint
+        if marker.get("source_fingerprint") != fingerprint:
+            return False
+        return cached_dir is None or marker.get("cached_fingerprint") == cls._fingerprint_directory(cached_dir)
 
     @staticmethod
     def _fingerprint_directory(directory: Path) -> str:
@@ -213,6 +223,19 @@ class LocalCacheManager:
     # made within the filesystem mtime resolution is still detected. Larger
     # files (big DLLs) fall back to size + mtime to keep startup fast.
     _CONTENT_HASH_MAX_BYTES = 8 * 1024 * 1024
+
+    @staticmethod
+    def _runtime_source_fingerprint(directory: Path, runtime_python: Path) -> str:
+        marker_path = directory / ".shared_runtime_ready.json"
+        if not marker_path.is_file():
+            return LocalCacheManager._fingerprint_directory_metadata(directory)
+        stat = runtime_python.stat()
+        digest = hashlib.sha256()
+        digest.update(str(directory).casefold().encode("utf-8"))
+        digest.update(marker_path.read_bytes())
+        digest.update(str(stat.st_size).encode("ascii"))
+        digest.update(str(stat.st_mtime_ns).encode("ascii"))
+        return digest.hexdigest()
 
     @staticmethod
     def _fingerprint_directory_metadata(directory: Path) -> str:

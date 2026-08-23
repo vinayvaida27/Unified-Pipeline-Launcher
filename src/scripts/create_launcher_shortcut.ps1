@@ -6,8 +6,8 @@
     The shortcut is generated on the target machine because .lnk files contain
     absolute paths. It works from paths with spaces, mapped drives, and UNC
     shares. If launcher.exe exists at the public root, the shortcut targets it.
-    Otherwise it targets src\runtime\pythonw.exe -m launcher with the config in
-    src\config.
+    Otherwise it targets START_LAUNCHER.vbs, which selects a current local
+    runtime cache when one is available.
 
 .EXAMPLE
     .\src\scripts\create_launcher_shortcut.ps1
@@ -32,8 +32,7 @@ if (-not (Test-Path $SourceRoot)) {
     $SourceRoot = $Root
 }
 $LauncherExe = Join-Path $Root "launcher.exe"
-$PythonW = Join-Path $SourceRoot "runtime\pythonw.exe"
-$Config = Join-Path $SourceRoot "config\launcher_config.json"
+$LauncherScript = Join-Path $Root "START_LAUNCHER.vbs"
 $ShortcutPath = Join-Path $Root "START_LAUNCHER.lnk"
 $LegacyBat = Join-Path $Root "START_LAUNCHER.bat"
 $DebugBat = Join-Path $Root "START_LAUNCHER_DEBUG.bat"
@@ -53,15 +52,12 @@ if (Test-Path $LauncherExe) {
     $Arguments = ""
     $WorkingDirectory = $Root
 } else {
-    if (-not (Test-Path $PythonW)) {
-        throw "pythonw.exe not found: $PythonW"
+    if (-not (Test-Path $LauncherScript)) {
+        throw "Launcher bootstrap not found: $LauncherScript"
     }
-    if (-not (Test-Path $Config)) {
-        throw "Launcher config not found: $Config"
-    }
-    $TargetPath = $PythonW
-    $Arguments = "-m launcher --config `"$Config`""
-    $WorkingDirectory = $SourceRoot
+    $TargetPath = Join-Path $env:SystemRoot "System32\wscript.exe"
+    $Arguments = "`"$LauncherScript`""
+    $WorkingDirectory = $Root
 }
 
 $Shell = New-Object -ComObject WScript.Shell

@@ -1,4 +1,9 @@
+import json
+import os
+import subprocess
 from pathlib import Path
+
+import pytest
 
 from build_scripts.create_pyinstaller_spec import generate_spec
 
@@ -62,17 +67,60 @@ def test_debug_batch_is_not_user_facing_launcher(repo_root):
     assert "pythonw.exe" not in script
 
 
-def test_shortcut_creator_uses_pythonw_without_terminal(source_root):
+def test_shortcut_creator_uses_bootstrap_without_terminal(source_root):
     script = (source_root / "scripts" / "create_launcher_shortcut.ps1").read_text(encoding="utf-8")
 
     assert "START_LAUNCHER.lnk" in script
-    assert 'runtime\\pythonw.exe' in script
-    assert '-m launcher --config' in script
+    assert "START_LAUNCHER.vbs" in script
+    assert "$LauncherScript" in script
     assert "$Shortcut.WindowStyle = 7" in script
     assert "Start-Process $ShortcutPath" in script
     assert "START_LAUNCHER.bat" in script
     assert "START_LAUNCHER_DEBUG.bat" in script
     assert "Rename-Item" in script
+
+
+def test_vbs_bootstrap_prefers_matching_local_runtime_cache(repo_root):
+    script = (repo_root / "START_LAUNCHER.vbs").read_text(encoding="utf-8")
+
+    assert "local_cache_directory" in script
+    assert ".shared_runtime_ready.json" in script
+    assert "FilesMatch" in script
+    assert "runtime\\current\\pythonw.exe" in script
+
+
+@pytest.mark.skipif(os.name != "nt", reason="VBScript bootstrap is Windows-specific")
+def test_vbs_bootstrap_parses_without_launching(repo_root, tmp_path):
+    script = (repo_root / "START_LAUNCHER.vbs").read_text(encoding="utf-8")
+    script = script.replace("shell.Run command, 0, False", "WScript.Echo pythonw")
+    probe = tmp_path / "START_LAUNCHER.vbs"
+    probe.write_text(script, encoding="utf-8")
+    (tmp_path / "runtime").mkdir()
+    (tmp_path / "runtime" / "pythonw.exe").touch()
+    marker = '{"prepared_at":"now"}\n'
+    (tmp_path / "runtime" / ".shared_runtime_ready.json").write_text(marker, encoding="utf-8")
+    cache = tmp_path / "cache"
+    cached_runtime = cache / "runtime" / "current"
+    cached_runtime.mkdir(parents=True)
+    (cached_runtime / "pythonw.exe").touch()
+    (cached_runtime / ".shared_runtime_ready.json").write_text(marker, encoding="utf-8")
+    (cached_runtime / ".runtime_source_path.txt").write_text(str(tmp_path / "runtime"), encoding="utf-8")
+    (tmp_path / "config").mkdir()
+    (tmp_path / "config" / "launcher_config.json").write_text(
+        json.dumps({"paths": {"local_cache_directory": str(cache).replace("\\", "/")}}),
+        encoding="utf-8",
+    )
+
+    result = subprocess.run(
+        ["cscript.exe", "//nologo", str(probe)],
+        check=False,
+        capture_output=True,
+        text=True,
+        timeout=10,
+    )
+
+    assert result.returncode == 0, result.stdout + result.stderr
+    assert str(cached_runtime / "pythonw.exe").lower() in result.stdout.strip().lower()
 
 
 def test_release_build_copies_launcher_requirements(source_root):
@@ -83,3 +131,77 @@ def test_release_build_copies_launcher_requirements(source_root):
     assert "requirements-launcher.txt" in verify_script
     assert "START_LAUNCHER.vbs" in build_script
     assert "START_LAUNCHER_DEBUG.bat" in build_script
+
+
+def test_double_click_installer_keeps_itself_on_failure_and_deletes_after_success(repo_root):
+    script = (repo_root / "INSTALL.bat").read_text(encoding="utf-8")
+
+    deploy_call = script.index("deploy_network.ps1")
+    failure_guard = script.index('if not "%EXITCODE%"=="0"')
+    self_delete = script.index('del /f /q "%~f0"')
+    assert deploy_call < failure_guard < self_delete
+    assert "INSTALL.bat was kept" in script
+    assert "START_LAUNCHER.lnk" in script
+
+
+def test_double_click_package_updater_calls_all_environment_updater(repo_root):
+    script = (repo_root / "UPDATE_PACKAGES.bat").read_text(encoding="utf-8")
+    updater = (repo_root / "src" / "scripts" / "update_all_environments.ps1").read_text(encoding="utf-8")
+
+    assert "update_all_environments.ps1" in script
+    assert "prepare_shared_runtime.ps1" in updater
+    assert "-Upgrade" in updater
+    assert "pyvenv.cfg" in updater
+    assert "pip check" in updater
+    assert "pip install --upgrade" in updater
+
+
+@pytest.mark.skipif(os.name != "nt", reason="double-click package updater is Windows-specific")
+def test_package_updater_dry_run_discovers_without_modifying(repo_root, tmp_path):
+    release = tmp_path / "release"
+    cache = tmp_path / "cache"
+    (release / "src" / "config").mkdir(parents=True)
+    (release / "src" / "runtime").mkdir()
+    (release / "src" / "runtime" / "python.exe").touch()
+    (release / "src" / "requirements-dev.txt").write_text("pytest\n", encoding="utf-8")
+    (release / ".venv" / "Scripts").mkdir(parents=True)
+    (release / ".venv" / "Scripts" / "python.exe").touch()
+    (release / "apps" / "demo").mkdir(parents=True)
+    (release / "apps" / "demo" / "requirements.txt").write_text("streamlit\n", encoding="utf-8")
+    (release / "apps" / "apps.json").write_text(
+        json.dumps({"applications": [{"id": "demo", "folder": "demo"}]}),
+        encoding="utf-8",
+    )
+    (release / "src" / "config" / "launcher_config.json").write_text(
+        json.dumps({"paths": {"local_cache_directory": str(cache)}}),
+        encoding="utf-8",
+    )
+    app_venv = cache / "environments" / "demo" / "1.0.0"
+    (app_venv / "Scripts").mkdir(parents=True)
+    (app_venv / "pyvenv.cfg").touch()
+    (app_venv / "Scripts" / "python.exe").touch()
+
+    result = subprocess.run(
+        [
+            "powershell.exe",
+            "-NoProfile",
+            "-ExecutionPolicy",
+            "Bypass",
+            "-File",
+            str(repo_root / "src" / "scripts" / "update_all_environments.ps1"),
+            "-ReleaseDir",
+            str(release),
+            "-DryRun",
+        ],
+        cwd=repo_root,
+        check=False,
+        capture_output=True,
+        text=True,
+        timeout=30,
+    )
+
+    assert result.returncode == 0, result.stderr
+    assert "[shared runtime]" in result.stdout
+    assert "repository development environment" in result.stdout
+    assert "app environment demo\\1.0.0" in result.stdout
+    assert "PLAN:" in result.stdout

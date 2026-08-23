@@ -1,9 +1,13 @@
 from __future__ import annotations
 
+import json
 import subprocess
 from pathlib import Path
 
+import pytest
+
 from launcher.app_discovery import discover_apps
+from launcher.exceptions import ApplicationStartError
 from launcher.models import EnvironmentState
 from launcher.process_manager import ProcessManager
 
@@ -53,6 +57,83 @@ def test_builds_correct_command_list(repo_root, tmp_path):
     assert "127.0.0.1" in command
     assert "--server.port" in command
     assert "5555" in command
+    assert command[command.index("--server.enableCORS") + 1] == "true"
+    assert command[command.index("--server.enableXsrfProtection") + 1] == "true"
+
+
+def test_stops_matching_stale_process_before_start(monkeypatch, repo_root, tmp_path):
+    app = discover_apps(repo_root / "apps")[0]
+    environment = _env(tmp_path)
+    manager = ProcessManager(tmp_path, health_checker=FakeHealth())
+    marker = tmp_path / f"{app.id}.runtime.json"
+    executable = str(environment.python_path.resolve()).lower()
+    stale_identity = {"created_at": 42, "executable": executable}
+    marker.write_text(
+        json.dumps({"pid": 9876, "identity": stale_identity, "entrypoint": str(app.entrypoint)}),
+        encoding="utf-8",
+    )
+    terminated = []
+    monkeypatch.setattr(
+        manager,
+        "_process_identity",
+        lambda pid: stale_identity if pid == 9876 else {"created_at": 43, "executable": executable},
+    )
+    monkeypatch.setattr(manager, "_terminate_process_tree", lambda pid: terminated.append(pid) or True)
+    monkeypatch.setattr("subprocess.Popen", lambda *args, **kwargs: FakeProcess())
+
+    manager.start(app, environment)
+
+    assert terminated == [9876]
+    assert json.loads(marker.read_text(encoding="utf-8"))["pid"] == 1234
+
+
+def test_refuses_to_kill_app_owned_by_live_launcher(monkeypatch, repo_root, tmp_path):
+    app = discover_apps(repo_root / "apps")[0]
+    manager = ProcessManager(tmp_path, health_checker=FakeHealth())
+    marker = tmp_path / f"{app.id}.runtime.json"
+    child_identity = {"created_at": 42, "executable": "python.exe"}
+    owner_identity = {"created_at": 43, "executable": "launcher.exe"}
+    marker.write_text(
+        json.dumps(
+            {
+                "pid": 9876,
+                "identity": child_identity,
+                "owner_pid": 8765,
+                "owner_identity": owner_identity,
+            }
+        ),
+        encoding="utf-8",
+    )
+    monkeypatch.setattr(
+        manager,
+        "_process_identity",
+        lambda pid: owner_identity if pid == 8765 else child_identity,
+    )
+    monkeypatch.setattr(
+        manager,
+        "_terminate_process_tree",
+        lambda pid: pytest.fail("a live launcher's app must not be terminated"),
+    )
+
+    with pytest.raises(ApplicationStartError, match="another active launcher"):
+        manager.cleanup_stale_processes()
+
+
+def test_malformed_marker_never_authorizes_process_termination(monkeypatch, repo_root, tmp_path):
+    app = discover_apps(repo_root / "apps")[0]
+    manager = ProcessManager(tmp_path, health_checker=FakeHealth())
+    marker = tmp_path / f"{app.id}.runtime.json"
+    marker.write_text(json.dumps({"pid": 9876, "identity": None}), encoding="utf-8")
+    monkeypatch.setattr(manager, "_process_identity", lambda pid: None)
+    monkeypatch.setattr(
+        manager,
+        "_terminate_process_tree",
+        lambda pid: pytest.fail("missing identity must fail closed"),
+    )
+
+    manager.cleanup_stale_processes()
+
+    assert not marker.exists()
 
 
 def test_records_process_state(monkeypatch, repo_root, tmp_path):

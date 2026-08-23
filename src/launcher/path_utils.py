@@ -33,6 +33,22 @@ def expand_path(value: str, base_dir: Path | None = None) -> Path:
     return path.resolve()
 
 
+def is_remote_path(path: Path) -> bool:
+    """Return whether a Windows path is on a UNC share or mapped network drive."""
+
+    raw = str(path)
+    if raw.startswith("\\\\"):
+        return True
+    if os.name != "nt" or not path.drive:
+        return False
+    try:
+        import ctypes
+
+        return ctypes.windll.kernel32.GetDriveTypeW(f"{path.drive}\\") == 4
+    except (AttributeError, OSError):
+        return False
+
+
 def ensure_within_directory(path: Path, root: Path) -> Path:
     """Resolve a path and ensure it stays inside root."""
 

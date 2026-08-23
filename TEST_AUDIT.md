@@ -105,6 +105,48 @@ Audit-only tools were installed into the existing `.venv`; project requirement f
 
 # Test Matrix
 
+## Master Prompt Traceability Plan
+
+This addendum was produced before generating the master-prompt tests. Input source: `Unified_Streamlit_Launcher_Codex_Master_Audit_Prompt.md`; target: pytest plus Python Playwright; review workflow: generated scenarios -> focused execution -> human/code review -> full suite.
+
+**Entities:** launcher window, app card, manifest, launch token/generation, startup worker, environment, Python runtime, process tree, port, health signal, browser session, local cache, public launch script, release artifact.
+
+**Explicit requirements:** REQ-A through REQ-W correspond one-to-one with Tests A-W in the master prompt. **Implicit requirements:** IMP-1 Stop/Restart/Close are generation-safe; IMP-2 UI, tracked process, listener, and browser agree; IMP-3 sibling apps remain independent; IMP-4 hostile fixtures remain inside temporary directories; IMP-5 production and development behavior are reported separately.
+
+**Invariants:** stopped generations never reopen or resurrect; one running generation owns one app ID/port; stopping one app cannot stop a sibling; every audit process and port is cleaned; shared runtime behavior is never reported as isolated; HTTP health is not browser usability; Qt evidence is not browser evidence.
+
+**Ambiguities:** product requirements do not define whether Stop owns grandchildren, whether an import-failing Streamlit server should be Running or Failed, whether long/UNC paths are supported, or whether default shared runtime intentionally rejects dependency conflicts. Tests report observed behavior and do not silently invent those contracts.
+
+| Req | Scenario / risk category | Priority | Primary oracle | Prior evidence | Master gap before generation |
+| --- | --- | --- | --- | --- | --- |
+| A | Qt Open -> browser counter -> Stop -> port closes | P0 state transition | Qt status + rendered identity + dead URL/process | Separate Qt/browser tests | Integrated chain |
+| B | Two Qt-launched apps, independent browser state/Stop/Restart | P0 concurrency | Distinct PID/port/session; sibling stays usable | Direct manager only | Integrated UI lifecycle |
+| C | 1/2/5/10 queue limits, mixed success | P1 volume | queue/accounting, unique ports, responsiveness | 1/2/5 manager metrics | 10 + UI queue/mixed |
+| D | Shared runtime vs two conflicting per-app venv wheels | P0 isolation | executable/prefix/path/version | Shared default proven | Real conflicting venvs |
+| E | Same local/global/launcher dependency module names | P1 integration | module path/value per child; launcher unaffected | Same local module A/B | Global/reserved collision |
+| F | Poison Python vars and arbitrary secret | P0 security | scrubbed Python vars; secret-leak negative | Tested | Retest through launcher |
+| G | Repeated allocation and deterministic port steal | P0 race | no false success; bounded cleanup | One occupied-port case | Repetition/steal timing |
+| H | Wrong responder + stale log + browser proof | P0 security | expected marker + exact health + rendered app | Fixed and tested | Repeated adversarial pass |
+| I | Child immediate crash while sibling runs | P0 failure | Failed UI, no browser, released port, sibling usable | Direct crash only | Native UI/sibling |
+| J | Missing import in shared/venv mode | P1 integration | visible error and accurate UI state | Browser shared mode | venv/UI semantics |
+| K | Large/Unicode/continuous stdout+stderr | P1 resource | progress, bounded reader, cleanup, disk growth | 4 MiB burst | continuous/Unicode |
+| L | Pre/post-health/CPU/shutdown hangs | P0 chaos | responsive UI, timeout, kill, no resurrection | post-health sleep | startup/CPU/race matrix |
+| M | Grandchild on Stop/Restart/Exit | P0 process | entire tree gone | Strict xfail | Exit/restart variants |
+| N | Open -> immediate Stop at several windows | P0 race | no process/browser/port/stale UI | deterministic blocked env | repeated real windows |
+| O | Open -> Restart x2 -> Stop -> Open | P0 race | latest generation only | unit token tests | real rapid lifecycle |
+| P | Stop All during parallel blocked starts | P0 race | no later child | one blocked worker | many workers |
+| Q | Close with Running and Starting children | P0 lifecycle | prompt + cleanup + no orphan | Starting regression | Running + descendants |
+| R | hostile Windows paths, long path, UNC/cwd | P1 environment | discovery + command + browser | local paths/long xfail | UNC/network simulation |
+| S | malformed/hostile registry metadata | P1 security | deterministic skip/error diagnostics | several validation tests | missing folder/order/Unicode |
+| T | read-only/slow/unavailable network source + local cache | P1 resilience | local execution or clear failure | basic cache copy | failure/read-only/cwd |
+| U | runtime missing/invalid/unsupported/spaces/integrity | P0 release | typed error or validated runtime | partial + packaged failure | matrix expansion |
+| V | cache reuse/stale/corrupt/interrupted/version | P1 resilience | atomic valid final cache | basic refresh | interruption/corruption |
+| W | VBS/BAT/PowerShell/PyInstaller public path | P0 release | actual process/exit/runtime behavior | build + EXE smoke | script execution comparison |
+
+**Scenario/oracle rules:** each generated test uses one dominant action, asserts an observable outcome plus a negative oracle, uses existing helpers where possible, and owns cleanup. Dynamic APIs/selectors are mechanically checked against `MainWindow`, `AppCard`, `ProcessManager`, and current Streamlit output before KEEP review.
+
+**Human review disposition before coding:** A/B/D/G/I/K/L/N/O/P/Q/T/U/V/W = KEEP for generation because they close material evidence gaps; C/E/J/M/R/S = MODIFY existing tests rather than duplicate them; F/H = KEEP as adversarial reruns; unsupported real UNC share, symlink privilege, Linux/macOS, and destructive system faults = DEFER with explicit limitation.
+
 | ID | Area | Scenario | Expected | Actual | Status |
 | -- | ---- | -------- | -------- | ------ | ------ |
 | L-01 | Launch | One real Streamlit app | Healthy/rendered | 1.103 s; 3-process tree; 68.29 MiB | PASS |

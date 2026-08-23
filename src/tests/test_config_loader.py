@@ -1,11 +1,13 @@
 from __future__ import annotations
 
 import json
+from dataclasses import replace
 
 import pytest
 
 from launcher.config_loader import load_platform_config
 from launcher.exceptions import ConfigurationError
+from launcher.main import should_sync_to_local_cache
 
 
 def test_valid_config_loads(config):
@@ -47,3 +49,10 @@ def test_malformed_json_raises_configuration_error(tmp_path):
 
     with pytest.raises(ConfigurationError, match="Could not read launcher configuration"):
         load_platform_config(path)
+
+
+def test_remote_runtime_uses_local_cache_even_when_opt_in_is_false(config, monkeypatch):
+    config = replace(config, runtime=replace(config.runtime, sync_to_local_cache=False))
+    monkeypatch.setattr("launcher.main.is_remote_path", lambda path: path == config.paths.runtime_python)
+
+    assert should_sync_to_local_cache(config)

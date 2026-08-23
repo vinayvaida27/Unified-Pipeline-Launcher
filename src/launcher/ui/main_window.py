@@ -9,8 +9,7 @@ from threading import Event
 from urllib.parse import parse_qsl, urlencode, urlparse, urlunparse
 from uuid import uuid4
 
-from PySide6.QtCore import QThreadPool, QTimer
-from PySide6.QtCore import QUrl
+from PySide6.QtCore import Qt, QThreadPool, QTimer, QUrl
 from PySide6.QtGui import QDesktopServices
 from PySide6.QtWidgets import (
     QComboBox,
@@ -22,6 +21,7 @@ from PySide6.QtWidgets import (
     QMessageBox,
     QPushButton,
     QScrollArea,
+    QStyle,
     QVBoxLayout,
     QWidget,
 )
@@ -30,6 +30,7 @@ from ..environment_manager import EnvironmentManager
 from ..health_checker import HealthChecker
 from ..models import ApplicationManifest, ApplicationStatus, PlatformConfig
 from ..process_manager import ProcessManager
+from ..secure_browser import open_isolated_browser
 from .about_dialog import show_about
 from .app_card import AppCard
 from .log_dialog import LogDialog
@@ -85,26 +86,29 @@ class MainWindow(QMainWindow):
         layout.setContentsMargins(0, 0, 0, 0)
         layout.setSpacing(0)
 
-        # Header bar
         header = QWidget()
         header.setObjectName("header")
         header_layout = QHBoxLayout(header)
-        header_layout.setContentsMargins(24, 18, 24, 18)
-        header_layout.setSpacing(12)
+        header_layout.setContentsMargins(26, 20, 26, 20)
+        header_layout.setSpacing(10)
         title_box = QVBoxLayout()
-        title_box.setSpacing(2)
+        title_box.setSpacing(3)
         title = QLabel(self.config.platform_name)
-        title.setObjectName("title")
-        subtitle = QLabel(f"{len(self.apps)} applications available")
-        subtitle.setObjectName("subtitle")
+        title.setObjectName("platformTitle")
+        self.results_label = QLabel(self._application_count_text(len(self.apps)))
+        self.results_label.setObjectName("platformSubtitle")
         title_box.addWidget(title)
-        title_box.addWidget(subtitle)
+        title_box.addWidget(self.results_label)
         self.startup_summary = QLabel("")
         self.startup_summary.setObjectName("summary")
         about = QPushButton("About")
         settings = QPushButton("Settings")
         about.setObjectName("ghost")
         settings.setObjectName("ghost")
+        about.setIcon(self.style().standardIcon(QStyle.StandardPixmap.SP_MessageBoxInformation))
+        settings.setIcon(self.style().standardIcon(QStyle.StandardPixmap.SP_FileDialogDetailedView))
+        about.setToolTip("About this launcher")
+        settings.setToolTip("View launcher settings")
         settings.clicked.connect(lambda: SettingsDialog(self.config, self).exec())
         about.clicked.connect(lambda: show_about(self, self.config.platform_name))
         header_layout.addLayout(title_box)
@@ -114,43 +118,57 @@ class MainWindow(QMainWindow):
         header_layout.addWidget(about)
         layout.addWidget(header)
 
-        # Toolbar
         toolbar_holder = QWidget()
         toolbar_holder.setObjectName("toolbar")
         toolbar = QHBoxLayout(toolbar_holder)
-        toolbar.setContentsMargins(24, 14, 24, 14)
+        toolbar.setContentsMargins(26, 14, 26, 14)
         toolbar.setSpacing(10)
         self.search = QLineEdit()
-        self.search.setPlaceholderText("Search applications...")
+        self.search.setPlaceholderText("Search applications")
         self.search.setMinimumWidth(240)
         self.search.setClearButtonEnabled(True)
+        self.search.setAccessibleName("Search applications")
         self.category = QComboBox()
-        self.category.addItems(["All"] + sorted({app.category for app in self.apps}))
+        self.category.addItems(["All categories"] + sorted({app.category for app in self.apps}))
         self.category.setMinimumWidth(180)
-        open_all = QPushButton("Open All")
-        stop_all = QPushButton("Stop All")
-        open_all.setObjectName("primary")
-        stop_all.setObjectName("secondary")
-        open_all.clicked.connect(self.open_all_apps)
-        stop_all.clicked.connect(self.stop_all_apps)
+        self.category.setAccessibleName("Application category")
+        self.open_all_button = QPushButton("Open All")
+        self.stop_all_button = QPushButton("Stop All")
+        self.open_all_button.setObjectName("primary")
+        self.stop_all_button.setObjectName("danger")
+        self.open_all_button.setIcon(self.style().standardIcon(QStyle.StandardPixmap.SP_MediaPlay))
+        self.stop_all_button.setIcon(self.style().standardIcon(QStyle.StandardPixmap.SP_MediaStop))
+        self.open_all_button.setToolTip("Open all visible applications")
+        self.stop_all_button.setToolTip("Stop all running applications")
+        self.open_all_button.clicked.connect(self.open_all_apps)
+        self.stop_all_button.clicked.connect(self.stop_all_apps)
         toolbar.addWidget(self.search, 1)
         toolbar.addWidget(self.category)
         toolbar.addStretch(0)
-        toolbar.addWidget(open_all)
-        toolbar.addWidget(stop_all)
+        toolbar.addWidget(self.open_all_button)
+        toolbar.addWidget(self.stop_all_button)
         layout.addWidget(toolbar_holder)
 
         self.grid_widget = QWidget()
         self.grid_widget.setObjectName("grid")
         self.grid = QGridLayout(self.grid_widget)
-        self.grid.setContentsMargins(24, 20, 24, 24)
-        self.grid.setHorizontalSpacing(18)
-        self.grid.setVerticalSpacing(18)
-        scroll = QScrollArea()
-        scroll.setWidgetResizable(True)
-        scroll.setFrameShape(QScrollArea.Shape.NoFrame)
-        scroll.setWidget(self.grid_widget)
-        layout.addWidget(scroll, 1)
+        self.grid.setContentsMargins(26, 22, 26, 26)
+        self.grid.setHorizontalSpacing(14)
+        self.grid.setVerticalSpacing(14)
+        self.grid.setColumnStretch(0, 1)
+        self.grid.setColumnStretch(1, 1)
+        self.empty_state = QLabel("No applications match the current filters.")
+        self.empty_state.setObjectName("emptyState")
+        self.empty_state.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        self.empty_state.setMinimumHeight(180)
+        self.empty_state.hide()
+        self.grid.addWidget(self.empty_state, 0, 0, 1, 2)
+        self.app_scroll = QScrollArea()
+        self.app_scroll.setWidgetResizable(True)
+        self.app_scroll.setFrameShape(QScrollArea.Shape.NoFrame)
+        self.app_scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
+        self.app_scroll.setWidget(self.grid_widget)
+        layout.addWidget(self.app_scroll, 1)
         self.setCentralWidget(root)
         self.search.textChanged.connect(self.apply_filters)
         self.category.currentTextChanged.connect(self.apply_filters)
@@ -171,10 +189,21 @@ class MainWindow(QMainWindow):
     def apply_filters(self) -> None:
         query = self.search.text().strip().lower()
         category = self.category.currentText()
+        visible_count = 0
         for app in self.apps:
             haystack = f"{app.name} {app.description} {app.category}".lower()
-            visible = (not query or query in haystack) and (category == "All" or app.category == category)
+            visible = (not query or query in haystack) and (
+                category == "All categories" or app.category == category
+            )
             self.cards[app.id].setVisible(visible)
+            visible_count += int(visible)
+        self.results_label.setText(self._application_count_text(visible_count))
+        self.empty_state.setVisible(visible_count == 0)
+        self.open_all_button.setEnabled(visible_count > 0)
+
+    @staticmethod
+    def _application_count_text(count: int) -> str:
+        return f"{count} application" if count == 1 else f"{count} applications"
 
     def open_app(self, app_id: str) -> None:
         self._user_stopped_ids.discard(app_id)
@@ -359,11 +388,20 @@ class MainWindow(QMainWindow):
         raise KeyError(app_id)
 
     def _open_url(self, url: str) -> None:
-        """Open a local app URL using the desktop shell."""
+        """Open a local app URL without loading the user's browser extensions."""
 
+        if os.name == "nt":
+            if open_isolated_browser(url):
+                return
+            QMessageBox.warning(
+                self,
+                "Secure browser unavailable",
+                "Microsoft Edge could not be opened in an isolated Guest window.",
+            )
+            return
         opened = QDesktopServices.openUrl(QUrl(url))
-        if not opened and os.name == "nt":
-            os.startfile(url)  # type: ignore[attr-defined]
+        if not opened:
+            LOG.error("Desktop browser could not open local URL")
 
     def _verified_open_url(self, app_id: str, state) -> str | None:
         """Return a cache-busted URL only when it matches the live tracked process."""
@@ -393,6 +431,7 @@ class MainWindow(QMainWindow):
         if queued:
             parts.append(f"{queued} queued")
         self.startup_summary.setText(" | ".join(parts))
+        self.stop_all_button.setEnabled(bool(running or self._active_startups or queued))
 
     def _sync_process_liveness(self) -> None:
         """Mark cards Failed when a running app process has died."""

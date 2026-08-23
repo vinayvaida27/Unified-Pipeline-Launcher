@@ -59,7 +59,7 @@ Invoke-GateStep "public metadata" {
             throw "Missing public metadata file: $Path"
         }
     }
-    foreach ($Path in @("README.md", "LICENSE", "START_LAUNCHER.vbs", "START_LAUNCHER_DEBUG.bat", "apps\apps.json")) {
+    foreach ($Path in @("README.md", "LICENSE", "INSTALL.bat", "UPDATE_PACKAGES.bat", "START_LAUNCHER.vbs", "START_LAUNCHER_DEBUG.bat", "apps\apps.json")) {
         if (-not (Test-Path (Join-Path $PublicRoot $Path))) {
             throw "Missing public root file: $Path"
         }

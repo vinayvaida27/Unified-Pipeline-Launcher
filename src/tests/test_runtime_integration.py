@@ -2,9 +2,12 @@ from __future__ import annotations
 
 import sys
 import threading
+import time
+from concurrent.futures import ThreadPoolExecutor
 from dataclasses import replace
 from http.server import BaseHTTPRequestHandler, HTTPServer
 from pathlib import Path
+from urllib.request import Request, urlopen
 
 import pytest
 
@@ -74,6 +77,19 @@ def test_real_streamlit_process_uses_app_cwd_and_scrubs_python_environment(tmp_p
         assert child_environment.get("PYTHONPATH") is None
         assert child_environment.get("PYTHONHOME") is None
         assert child_environment.get("PYTHONNOUSERSITE") == "1"
+    finally:
+        manager.stop_all()
+
+
+def test_cross_origin_web_page_is_not_allowed_to_read_app_response(tmp_path):
+    app = _app(tmp_path, "cors-probe", "import streamlit as st\nst.title('CORS probe')\n")
+    manager = ProcessManager(tmp_path / "logs")
+    try:
+        state = manager.start(app, _environment(tmp_path, app))
+        request = Request(state.url, headers={"Origin": "https://untrusted.example"})
+        with urlopen(request, timeout=3) as response:
+            assert response.status == 200
+            assert response.headers.get("Access-Control-Allow-Origin") is None
     finally:
         manager.stop_all()
 
@@ -174,3 +190,54 @@ def test_new_process_manager_reconciles_a_child_from_an_earlier_launcher_instanc
     finally:
         original.stop_all()
         replacement.stop_all()
+
+
+@pytest.mark.parametrize(
+    "hang_code",
+    ["import time; time.sleep(120)", "while True: pass"],
+    ids=["sleep", "cpu-bound"],
+)
+def test_pre_server_hang_times_out_and_releases_process_and_port(tmp_path, hang_code):
+    app = _app(tmp_path, "pre-server-hang", "import streamlit as st\nst.title('unused')\n")
+    app = replace(app, launch=replace(app.launch, startup_timeout_seconds=1))
+    manager = ProcessManager(tmp_path / "logs")
+    port = manager.port_manager.get_available_port()
+    manager.port_manager.release(port)
+    manager.port_manager.get_available_port = lambda: port  # type: ignore[method-assign]
+    manager.build_command = lambda app, env, selected_port: [  # type: ignore[method-assign]
+        sys.executable,
+        "-c",
+        hang_code,
+    ]
+
+    started = time.monotonic()
+    with pytest.raises(ApplicationHealthCheckError, match="did not become healthy"):
+        manager.start(app, _environment(tmp_path, app))
+
+    assert time.monotonic() - started < 5
+    assert manager.get(app.id) is None
+    assert manager.port_manager.is_available(port)
+
+
+def test_stop_during_real_health_polling_cancels_the_start(tmp_path):
+    app = _app(tmp_path, "polling-hang", "import streamlit as st\nst.title('unused')\n")
+    manager = ProcessManager(tmp_path / "logs")
+    manager.build_command = lambda app, env, port: [  # type: ignore[method-assign]
+        sys.executable,
+        "-c",
+        "import time; time.sleep(120)",
+    ]
+
+    with ThreadPoolExecutor(max_workers=1) as executor:
+        future = executor.submit(manager.start, app, _environment(tmp_path, app))
+        deadline = time.monotonic() + 5
+        while not manager.running_states() and time.monotonic() < deadline:
+            time.sleep(0.01)
+        state = manager.running_states()[0]
+        manager.stop(app.id, timeout_seconds=3)
+        with pytest.raises(ApplicationHealthCheckError, match="exited before becoming healthy"):
+            future.result(timeout=5)
+
+    assert state.process.poll() is not None
+    assert manager.get(app.id) is None
+    assert manager.port_manager.is_available(state.port)

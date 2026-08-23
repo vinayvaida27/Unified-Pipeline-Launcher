@@ -25,7 +25,8 @@
 #>
 
 param(
-    [string]$ReleaseDir = ""
+    [string]$ReleaseDir = "",
+    [switch]$Upgrade
 )
 
 $ErrorActionPreference = "Stop"
@@ -139,6 +140,9 @@ Write-Host "(This may take a few minutes on first run.)"
 Write-Host ""
 
 $PipArgs = @("-m", "pip", "install", "--no-warn-script-location")
+if ($Upgrade) {
+    $PipArgs += "--upgrade"
+}
 
 if ($AllWheelhouses.Count -gt 0) {
     Write-Host "Using offline wheelhouse(s) for faster install."

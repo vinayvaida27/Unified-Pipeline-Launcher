@@ -96,7 +96,6 @@ st.write(f'Count: {st.session_state.count}')
         manager.stop_all()
 
 
-@pytest.mark.xfail(strict=True, reason="ProcessManager stops only the direct Streamlit process")
 def test_stopping_streamlit_also_stops_its_nested_child(tmp_path):
     playwright = pytest.importorskip("playwright.sync_api")
     psutil = pytest.importorskip("psutil")
@@ -131,8 +130,7 @@ st.title('Nested child fixture')
 
         manager.stop(app.id, timeout_seconds=3)
 
-        nested = psutil.Process(child_pid)
-        assert not nested.is_running()
+        assert not psutil.pid_exists(child_pid)
     finally:
         manager.stop_all()
         if child_pid and psutil.pid_exists(child_pid):

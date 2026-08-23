@@ -3,6 +3,7 @@ from __future__ import annotations
 import os
 import threading
 import time
+from dataclasses import replace
 from datetime import datetime, timezone
 
 import pytest
@@ -37,6 +38,23 @@ class BlockingEnvironmentManager:
 
     def ensure_environment(self, app, progress):
         self.entered.set()
+        assert self.release.wait(timeout=5)
+        return object()
+
+
+class CountingBlockingEnvironmentManager:
+    def __init__(self, expected: int):
+        self.expected = expected
+        self.entered = 0
+        self.lock = threading.Lock()
+        self.all_entered = threading.Event()
+        self.release = threading.Event()
+
+    def ensure_environment(self, app, progress):
+        with self.lock:
+            self.entered += 1
+            if self.entered == self.expected:
+                self.all_entered.set()
         assert self.release.wait(timeout=5)
         return object()
 
@@ -178,6 +196,59 @@ def test_open_running_app_ignores_malformed_url(qt_app, config, repo_root, tmp_p
     assert starts == []
 
 
+def test_windows_browser_does_not_fall_back_to_extension_enabled_profile(
+    qt_app, config, repo_root, monkeypatch
+):
+    app = _app(repo_root)
+    window = _window(qt_app, config, app, FakeProcessManager())
+    warnings = []
+    monkeypatch.setattr("launcher.ui.main_window.open_isolated_browser", lambda url: False)
+    monkeypatch.setattr(
+        "launcher.ui.main_window.QDesktopServices.openUrl",
+        lambda url: pytest.fail("default browser profile must not receive app data"),
+    )
+    monkeypatch.setattr(QMessageBox, "warning", staticmethod(lambda *args: warnings.append(args)))
+
+    window._open_url("http://127.0.0.1:61234")
+
+    assert len(warnings) == 1
+
+
+def test_launcher_layout_fits_at_minimum_width(qt_app, config, repo_root):
+    base_app = _app(repo_root)
+    apps = [
+        replace(
+            base_app,
+            id=f"layout-{index}",
+            name=f"Long Operational Application Name {index}",
+            display_order=index,
+        )
+        for index in range(1, 5)
+    ]
+    window = MainWindow(config, apps, FakeEnvironmentManager(), FakeProcessManager())
+    window.liveness_timer.stop()
+    window.resize(config.window.minimum_width, config.window.minimum_height)
+    window.show()
+    qt_app.processEvents()
+
+    assert window.app_scroll.horizontalScrollBar().maximum() == 0
+    assert all(not card.open_button.icon().isNull() for card in window.cards.values())
+    window.close()
+
+
+def test_filter_shows_result_count_and_empty_state(qt_app, config, repo_root):
+    app = _app(repo_root)
+    window = _window(qt_app, config, app, FakeProcessManager())
+    window.show()
+
+    window.search.setText("not-an-application")
+    qt_app.processEvents()
+
+    assert window.results_label.text() == "0 applications"
+    assert window.empty_state.isVisible()
+    window.close()
+
+
 def test_duplicate_start_worker_is_prevented(qt_app, config, repo_root, tmp_path, monkeypatch):
     app = _app(repo_root)
     window = _window(qt_app, config, app, FakeProcessManager())
@@ -235,3 +306,53 @@ def test_close_cancels_an_inflight_environment_start(qt_app, config, repo_root, 
 
     assert window._active_startups == 0
     assert process_manager.start_calls == []
+
+
+def test_stop_all_cancels_ten_apps_across_active_and_queued_starts(qt_app, config, repo_root):
+    base_app = _app(repo_root)
+    apps = [
+        replace(base_app, id=f"queued-{index}", name=f"Queued {index}", display_order=index + 1)
+        for index in range(10)
+    ]
+    config = replace(config, launcher=replace(config.launcher, maximum_parallel_startups=3))
+    environment_manager = CountingBlockingEnvironmentManager(expected=3)
+    process_manager = RecordingProcessManager()
+    window = MainWindow(config, apps, environment_manager, process_manager)
+    window.liveness_timer.stop()
+    window.show()
+    qt_app.processEvents()
+
+    window.open_all_apps()
+    assert environment_manager.all_entered.wait(timeout=5)
+    assert window._active_startups == 3
+    assert len(window._startup_queue) == 7
+
+    window.stop_all_apps()
+    environment_manager.release.set()
+    deadline = time.monotonic() + 5
+    while window._active_startups and time.monotonic() < deadline:
+        qt_app.processEvents()
+        time.sleep(0.01)
+
+    assert process_manager.start_calls == []
+    assert not window._startup_queue
+    assert all(card.status.text() == ApplicationStatus.STOPPED.value for card in window.cards.values())
+    window.close()
+
+
+def test_close_stops_a_running_child(qt_app, config, repo_root, tmp_path, monkeypatch):
+    app = _app(repo_root)
+    state = _state(app, tmp_path)
+    process_manager = FakeProcessManager(state)
+    window = _window(qt_app, config, app, process_manager)
+    monkeypatch.setattr(
+        QMessageBox,
+        "question",
+        staticmethod(lambda *args, **kwargs: QMessageBox.StandardButton.Yes),
+    )
+    window.show()
+
+    window.close()
+
+    assert process_manager.stop_calls == [app.id]
+    assert process_manager.get(app.id) is None
