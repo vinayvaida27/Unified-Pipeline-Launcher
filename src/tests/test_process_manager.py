@@ -49,7 +49,7 @@ def _env(tmp_path: Path):
 
 
 def test_builds_correct_command_list(repo_root, tmp_path):
-    app = discover_apps(repo_root / "src" / "apps")[0]
+    app = discover_apps(repo_root / "apps")[0]
     manager = ProcessManager(tmp_path, health_checker=FakeHealth())
     command = manager.build_command(app, _env(tmp_path), 5555)
     assert command[1:4] == ["-m", "streamlit", "run"]
@@ -62,7 +62,7 @@ def test_builds_correct_command_list(repo_root, tmp_path):
 
 
 def test_stops_matching_stale_process_before_start(monkeypatch, repo_root, tmp_path):
-    app = discover_apps(repo_root / "src" / "apps")[0]
+    app = discover_apps(repo_root / "apps")[0]
     environment = _env(tmp_path)
     manager = ProcessManager(tmp_path, health_checker=FakeHealth())
     marker = tmp_path / f"{app.id}.runtime.json"
@@ -88,7 +88,7 @@ def test_stops_matching_stale_process_before_start(monkeypatch, repo_root, tmp_p
 
 
 def test_refuses_to_kill_app_owned_by_live_launcher(monkeypatch, repo_root, tmp_path):
-    app = discover_apps(repo_root / "src" / "apps")[0]
+    app = discover_apps(repo_root / "apps")[0]
     manager = ProcessManager(tmp_path, health_checker=FakeHealth())
     marker = tmp_path / f"{app.id}.runtime.json"
     child_identity = {"created_at": 42, "executable": "python.exe"}
@@ -120,7 +120,7 @@ def test_refuses_to_kill_app_owned_by_live_launcher(monkeypatch, repo_root, tmp_
 
 
 def test_malformed_marker_never_authorizes_process_termination(monkeypatch, repo_root, tmp_path):
-    app = discover_apps(repo_root / "src" / "apps")[0]
+    app = discover_apps(repo_root / "apps")[0]
     manager = ProcessManager(tmp_path, health_checker=FakeHealth())
     marker = tmp_path / f"{app.id}.runtime.json"
     marker.write_text(json.dumps({"pid": 9876, "identity": None}), encoding="utf-8")
@@ -137,7 +137,7 @@ def test_malformed_marker_never_authorizes_process_termination(monkeypatch, repo
 
 
 def test_records_process_state(monkeypatch, repo_root, tmp_path):
-    app = discover_apps(repo_root / "src" / "apps")[0]
+    app = discover_apps(repo_root / "apps")[0]
     monkeypatch.setattr("subprocess.Popen", lambda *args, **kwargs: FakeProcess())
     manager = ProcessManager(tmp_path, health_checker=FakeHealth())
     state = manager.start(app, _env(tmp_path))
@@ -147,7 +147,7 @@ def test_records_process_state(monkeypatch, repo_root, tmp_path):
 
 
 def test_does_not_start_duplicate_app(monkeypatch, repo_root, tmp_path):
-    app = discover_apps(repo_root / "src" / "apps")[0]
+    app = discover_apps(repo_root / "apps")[0]
     calls = []
 
     def popen(*args, **kwargs):
@@ -163,7 +163,7 @@ def test_does_not_start_duplicate_app(monkeypatch, repo_root, tmp_path):
 
 
 def test_truncates_app_log_on_each_launch(monkeypatch, repo_root, tmp_path):
-    app = discover_apps(repo_root / "src" / "apps")[0]
+    app = discover_apps(repo_root / "apps")[0]
     processes = [FakeProcess(pid=1111), FakeProcess(pid=2222)]
 
     monkeypatch.setattr("subprocess.Popen", lambda *args, **kwargs: processes.pop(0))
@@ -180,7 +180,7 @@ def test_truncates_app_log_on_each_launch(monkeypatch, repo_root, tmp_path):
 
 
 def test_restart_produces_new_pid_and_verified_url(monkeypatch, repo_root, tmp_path):
-    app = discover_apps(repo_root / "src" / "apps")[0]
+    app = discover_apps(repo_root / "apps")[0]
     processes = [FakeProcess(pid=1111), FakeProcess(pid=2222)]
 
     monkeypatch.setattr("subprocess.Popen", lambda *args, **kwargs: processes.pop(0))
@@ -196,7 +196,7 @@ def test_restart_produces_new_pid_and_verified_url(monkeypatch, repo_root, tmp_p
 
 
 def test_stops_process(monkeypatch, repo_root, tmp_path):
-    app = discover_apps(repo_root / "src" / "apps")[0]
+    app = discover_apps(repo_root / "apps")[0]
     fake = FakeProcess()
     monkeypatch.setattr("subprocess.Popen", lambda *args, **kwargs: fake)
     manager = ProcessManager(tmp_path, health_checker=FakeHealth())
@@ -207,7 +207,7 @@ def test_stops_process(monkeypatch, repo_root, tmp_path):
 
 
 def test_kills_process_that_does_not_stop_before_timeout(monkeypatch, repo_root, tmp_path):
-    app = discover_apps(repo_root / "src" / "apps")[0]
+    app = discover_apps(repo_root / "apps")[0]
     fake = StubbornFakeProcess()
     monkeypatch.setattr("subprocess.Popen", lambda *args, **kwargs: fake)
     manager = ProcessManager(tmp_path, health_checker=FakeHealth())
@@ -221,7 +221,7 @@ def test_kills_process_that_does_not_stop_before_timeout(monkeypatch, repo_root,
 
 
 def test_cleans_state_after_crash(monkeypatch, repo_root, tmp_path):
-    app = discover_apps(repo_root / "src" / "apps")[0]
+    app = discover_apps(repo_root / "apps")[0]
     fake = FakeProcess()
     monkeypatch.setattr("subprocess.Popen", lambda *args, **kwargs: fake)
     manager = ProcessManager(tmp_path, health_checker=FakeHealth())
@@ -231,7 +231,7 @@ def test_cleans_state_after_crash(monkeypatch, repo_root, tmp_path):
 
 
 def test_mark_running_ignores_malformed_url(monkeypatch, repo_root, tmp_path):
-    app = discover_apps(repo_root / "src" / "apps")[0]
+    app = discover_apps(repo_root / "apps")[0]
     monkeypatch.setattr("subprocess.Popen", lambda *args, **kwargs: FakeProcess())
     manager = ProcessManager(tmp_path, health_checker=FakeHealth())
     manager.start(app, _env(tmp_path))

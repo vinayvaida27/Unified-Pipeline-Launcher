@@ -10,9 +10,9 @@ from launcher.exceptions import ConfigurationError
 from launcher.main import should_sync_to_local_cache
 
 
-def test_valid_config_loads(config, source_root):
+def test_valid_config_loads(config, repo_root):
     assert config.platform_name == "Unified Pipeline Launcher"
-    assert config.paths.apps_directory == (source_root / "apps").resolve()
+    assert config.paths.apps_directory == (repo_root / "apps").resolve()
 
 
 def test_missing_required_field_fails(tmp_path, source_root):

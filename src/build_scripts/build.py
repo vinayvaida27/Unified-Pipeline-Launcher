@@ -76,11 +76,15 @@ class ExeBuilder:
             if dst.exists():
                 shutil.rmtree(dst)
             shutil.copytree(src, dst, ignore=shutil.ignore_patterns("*.md"))
-        apps_src = self.project_root / "apps"
+        apps_src = self.public_root / "apps"
         apps_dst = self.release_dir / "apps"
         if apps_dst.exists():
             shutil.rmtree(apps_dst)
         shutil.copytree(apps_src, apps_dst, ignore=shutil.ignore_patterns("*.md"))
+        release_config = self.release_dir / "config" / "launcher_config.json"
+        config = json.loads(release_config.read_text(encoding="utf-8"))
+        config["paths"]["apps_directory"] = "../apps"
+        release_config.write_text(json.dumps(config, indent=2) + "\n", encoding="utf-8")
         for name in ("README.md", "LICENSE", "requirements-launcher.txt"):
             src = (self.project_root / name) if name == "requirements-launcher.txt" else (self.public_root / name)
             if src.exists():

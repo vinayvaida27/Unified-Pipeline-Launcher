@@ -21,12 +21,12 @@ def _write_registry(apps_dir, data):
 
 
 def test_discovers_all_10_apps(repo_root):
-    apps = discover_apps(repo_root / "src" / "apps")
+    apps = discover_apps(repo_root / "apps")
     assert len(apps) == 10
 
 
 def test_sorts_by_display_order(repo_root):
-    apps = discover_apps(repo_root / "src" / "apps")
+    apps = discover_apps(repo_root / "apps")
     assert [app.display_order for app in apps] == list(range(1, 11))
 
 

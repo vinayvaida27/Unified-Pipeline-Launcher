@@ -39,16 +39,15 @@ launcher also removes identity-matched processes left by an earlier crash.
 
 ## Add An App
 
-Application files live in `src/apps`. Copy the template:
+Application files live in `apps`. Copy the template:
 
 ```powershell
-Copy-Item -Recurse .\src\apps\app_template .\src\apps\my_app
+Copy-Item -Recurse .\apps\app_template .\apps\my_app
 ```
 
-Edit `src/apps/my_app/app.py`, list every dependency in
-`src/apps/my_app/requirements.txt`, and provide an icon at
-`src/apps/my_app/assets/icon.svg`. Then add the app to
-`src/apps/apps.json`:
+Edit `apps/my_app/app.py`, list every dependency in
+`apps/my_app/requirements.txt`, and provide an icon at
+`apps/my_app/assets/icon.svg`. Then add the app to `apps/apps.json`:
 
 ```json
 {
@@ -81,10 +80,10 @@ Unified-Pipeline-Launcher/
 |-- START_LAUNCHER.vbs          Normal no-console launcher
 |-- START_LAUNCHER_DEBUG.bat    Troubleshooting launcher
 |-- UPDATE_PACKAGES.bat         Python environment updater
+|-- apps/                       App registry and Streamlit apps
 |-- README.md
 |-- LICENSE
 `-- src/
-    |-- apps/                   App registry and Streamlit apps
     |-- config/                 Launcher configuration
     |-- launcher/               Desktop application
     |-- scripts/                Install, update, and build support

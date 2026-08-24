@@ -24,7 +24,7 @@ $Root = (Resolve-Path $ReleaseDir).Path
 $ReleaseSourceRoot = Join-Path $Root "src"
 if (-not (Test-Path $ReleaseSourceRoot)) { $ReleaseSourceRoot = $Root }
 
-$AppsRoot = Join-Path $ReleaseSourceRoot "apps"
+$AppsRoot = Join-Path $Root "apps"
 $AppsJson = Join-Path $AppsRoot "apps.json"
 $ConfigPath = Join-Path $ReleaseSourceRoot "config\launcher_config.json"
 if (-not (Test-Path $AppsJson)) { throw "App registry not found: $AppsJson" }

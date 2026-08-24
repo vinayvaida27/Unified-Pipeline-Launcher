@@ -7,7 +7,7 @@ from launcher.local_cache import LocalCacheManager
 
 
 def test_syncs_app_source_to_local_cache(tmp_path, repo_root):
-    app = discover_apps(repo_root / "src" / "apps")[0]
+    app = discover_apps(repo_root / "apps")[0]
     cache = LocalCacheManager(tmp_path / "cache")
     cache.ensure_directories()
 

@@ -9,7 +9,7 @@
     "minimum_height": 600
   },
   "paths": {
-    "apps_directory": "../apps",
+    "apps_directory": "../../apps",
     "runtime_python": "../runtime/python.exe",
     "local_cache_directory": "%LOCALAPPDATA%/OrganizationName/UnifiedPipelineLauncher",
     "network_release_directory": "",

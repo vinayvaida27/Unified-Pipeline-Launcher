@@ -78,7 +78,7 @@ $PythonVersion = & $Python --version 2>&1
 Write-Host "Python version : $PythonVersion"
 
 # Read the app registry
-$AppsRoot = Join-Path $SourceRoot "apps"
+$AppsRoot = Join-Path $ReleaseDir "apps"
 $AppsJson = Join-Path $AppsRoot "apps.json"
 if (-not (Test-Path $AppsJson)) {
     Write-Error "App registry not found: $AppsJson"

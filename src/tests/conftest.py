@@ -27,7 +27,7 @@ def config(source_root: Path):
 @pytest.fixture()
 def temp_config(tmp_path: Path, repo_root: Path, source_root: Path):
     data = json.loads((source_root / "config" / "launcher_config.json").read_text(encoding="utf-8"))
-    data["paths"]["apps_directory"] = str(source_root / "apps")
+    data["paths"]["apps_directory"] = str(repo_root / "apps")
     data["paths"]["runtime_python"] = str(source_root / "runtime" / "python.exe")
     data["paths"]["local_cache_directory"] = str(tmp_path / "cache")
     path = tmp_path / "launcher_config.json"
@@ -36,7 +36,7 @@ def temp_config(tmp_path: Path, repo_root: Path, source_root: Path):
 
 
 @pytest.fixture()
-def copied_apps(tmp_path: Path, source_root: Path) -> Path:
+def copied_apps(tmp_path: Path, repo_root: Path) -> Path:
     target = tmp_path / "apps"
-    shutil.copytree(source_root / "apps", target)
+    shutil.copytree(repo_root / "apps", target)
     return target

@@ -16,8 +16,8 @@ def _minimal_project(root: Path) -> None:
 
 
 def test_public_repository_layout_is_minimal(repo_root, source_root):
-    assert (source_root / "apps" / "apps.json").is_file()
-    assert not (repo_root / "apps").exists()
+    assert (repo_root / "apps" / "apps.json").is_file()
+    assert not (source_root / "apps").exists()
     assert not (repo_root / "TEST_AUDIT.md").exists()
 
     tracked = subprocess.run(
@@ -163,9 +163,11 @@ def test_release_build_copies_source_apps_into_portable_layout(tmp_path):
     (builder.pyinstaller_dist / "launcher" / "launcher.exe").touch()
     for name in ("assets", "config", "runtime"):
         (source_root / name).mkdir(parents=True)
-    (source_root / "config" / "launcher_config.json").write_text("{}\n", encoding="utf-8")
-    (source_root / "apps").mkdir()
-    (source_root / "apps" / "apps.json").write_text('{"applications": []}\n', encoding="utf-8")
+    (source_root / "config" / "launcher_config.json").write_text(
+        '{"paths": {"apps_directory": "../../apps"}}\n', encoding="utf-8"
+    )
+    (public_root / "apps").mkdir()
+    (public_root / "apps" / "apps.json").write_text('{"applications": []}\n', encoding="utf-8")
     (source_root / "requirements-launcher.txt").write_text("PySide6\n", encoding="utf-8")
     for name in ("README.md", "LICENSE", "START_LAUNCHER.vbs", "START_LAUNCHER_DEBUG.bat"):
         (public_root / name).write_text(name, encoding="utf-8")
@@ -174,6 +176,10 @@ def test_release_build_copies_source_apps_into_portable_layout(tmp_path):
 
     assert (builder.release_dir / "apps" / "apps.json").is_file()
     assert (builder.release_dir / "config" / "launcher_config.json").is_file()
+    release_config = json.loads(
+        (builder.release_dir / "config" / "launcher_config.json").read_text(encoding="utf-8")
+    )
+    assert release_config["paths"]["apps_directory"] == "../apps"
     assert builder.release_dir.name == "Unified-Pipeline-Launcher"
 
 
@@ -217,9 +223,9 @@ def test_package_updater_dry_run_discovers_without_modifying(repo_root, tmp_path
     (release / "src" / "requirements-dev.txt").write_text("pytest\n", encoding="utf-8")
     (release / ".venv" / "Scripts").mkdir(parents=True)
     (release / ".venv" / "Scripts" / "python.exe").touch()
-    (release / "src" / "apps" / "demo").mkdir(parents=True)
-    (release / "src" / "apps" / "demo" / "requirements.txt").write_text("streamlit\n", encoding="utf-8")
-    (release / "src" / "apps" / "apps.json").write_text(
+    (release / "apps" / "demo").mkdir(parents=True)
+    (release / "apps" / "demo" / "requirements.txt").write_text("streamlit\n", encoding="utf-8")
+    (release / "apps" / "apps.json").write_text(
         json.dumps({"applications": [{"id": "demo", "folder": "demo"}]}),
         encoding="utf-8",
     )
