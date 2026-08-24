@@ -1,6 +1,6 @@
 <#
 .SYNOPSIS
-    Full one-command deploy for Z:\Vinay Vaida\Unified-Streamlit-Launcher.
+    Install Unified Pipeline Launcher after cloning the repository.
 
 .DESCRIPTION
     Run this once after git clone, and again after every git pull.
@@ -15,7 +15,7 @@
     the network drive using the bundled runtime.
 
 .EXAMPLE
-    cd "Z:\Vinay Vaida\Unified-Streamlit-Launcher"
+    cd "Z:\Unified-Pipeline-Launcher"
     .\src\scripts\deploy_network.ps1
 #>
 
@@ -26,11 +26,11 @@ $Root = Split-Path -Parent $SourceRoot
 
 Write-Host ""
 Write-Host "============================================================"
-Write-Host "  Unified Streamlit Launcher -- Network Drive Deploy"
+Write-Host "  Unified Pipeline Launcher -- Install"
 Write-Host "  $Root"
 Write-Host "============================================================"
 
-# â”€â”€ Step 1: Download Python runtime (skip if already present) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+# Step 1: Download Python runtime (skip if already present)
 $Python = Join-Path $SourceRoot "runtime\python.exe"
 if (Test-Path $Python) {
     $Ver = & $Python --version 2>&1
@@ -43,19 +43,19 @@ if (Test-Path $Python) {
     if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
 }
 
-# â”€â”€ Step 2: Install all app packages into the shared runtime â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+# Step 2: Install launcher and app packages
 Write-Host ""
 Write-Host "[2/3] Installing launcher and app packages into shared runtime..."
 & (Join-Path $PSScriptRoot "prepare_shared_runtime.ps1") -ReleaseDir $Root
 if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
 
-# â”€â”€ Step 3: Create the user-facing no-console shortcut â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+# Step 3: Create the no-console shortcut
 Write-Host ""
 Write-Host "[3/3] Creating no-console launcher shortcut..."
 & (Join-Path $PSScriptRoot "create_launcher_shortcut.ps1") -ReleaseDir $Root
 if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
 
-# â”€â”€ Done â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+# Done
 Write-Host ""
 Write-Host "============================================================"
 Write-Host "  DEPLOY COMPLETE"

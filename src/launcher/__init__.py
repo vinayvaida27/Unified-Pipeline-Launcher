@@ -1,3 +1,3 @@
-"""Unified Streamlit Launcher package."""
+"""Unified Pipeline Launcher package."""
 
 __version__ = "1.0.0"

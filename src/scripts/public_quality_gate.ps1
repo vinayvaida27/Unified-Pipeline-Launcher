@@ -54,12 +54,12 @@ Invoke-GateStep "compile Python sources" {
 }
 
 Invoke-GateStep "public metadata" {
-    foreach ($Path in @("requirements-launcher.txt", "scripts\create_launcher_shortcut.ps1")) {
+    foreach ($Path in @("requirements-launcher.txt", "scripts\create_launcher_shortcut.ps1", "apps\apps.json")) {
         if (-not (Test-Path (Join-Path $Root $Path))) {
             throw "Missing public metadata file: $Path"
         }
     }
-    foreach ($Path in @("README.md", "LICENSE", "INSTALL.bat", "UPDATE_PACKAGES.bat", "START_LAUNCHER.vbs", "START_LAUNCHER_DEBUG.bat", "apps\apps.json")) {
+    foreach ($Path in @("README.md", "LICENSE", "INSTALL.bat", "UPDATE_PACKAGES.bat", "START_LAUNCHER.vbs", "START_LAUNCHER_DEBUG.bat")) {
         if (-not (Test-Path (Join-Path $PublicRoot $Path))) {
             throw "Missing public root file: $Path"
         }
@@ -82,7 +82,7 @@ if ($FullBuild) {
         & (Join-Path $PSScriptRoot "build_exe.ps1")
     }
     Invoke-GateStep "release verification" {
-        & (Join-Path $PSScriptRoot "verify_release.ps1") -Path (Join-Path $Root "build\Unified-Streamlit-Launcher")
+        & (Join-Path $PSScriptRoot "verify_release.ps1") -Path (Join-Path $Root "build\Unified-Pipeline-Launcher")
     }
 }
 

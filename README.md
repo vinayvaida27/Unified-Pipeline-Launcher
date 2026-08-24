@@ -1,144 +1,61 @@
-# Unified Streamlit Launcher
+# Unified Pipeline Launcher
 
-A Windows launcher for sharing many Streamlit apps from one clean folder.
+Unified Pipeline Launcher is a Windows desktop application for starting,
+viewing, restarting, and stopping a collection of local Streamlit apps from one
+screen.
 
-The public folder is intentionally simple:
+## Install
 
-```text
-Unified-Streamlit-Launcher/
-  README.md
-  LICENSE
-  INSTALL.bat
-  UPDATE_PACKAGES.bat
-  START_LAUNCHER.vbs
-  START_LAUNCHER_DEBUG.bat
-  apps/
-  src/
-```
+Requirements: Windows 10 or 11, Microsoft Edge, and internet access during the
+first installation. A separate Python installation is not required.
 
-Most users only need the installer, launcher shortcut, package updater, and
-`apps/`. The implementation, configuration, tests, and runtime live in `src/`.
+1. Clone or download this repository.
+2. Double-click `INSTALL.bat`.
+3. Wait for the launcher window to open.
 
-## Install On A New System
+The installer downloads the private Python runtime, installs all declared
+packages, creates `START_LAUNCHER.lnk`, and starts the launcher. It deletes
+`INSTALL.bat` only after a successful installation; after a failure it keeps the
+file so the installation can be retried.
 
-After cloning the repository, double-click:
+## Use
 
-```text
-INSTALL.bat
-```
+- Double-click `START_LAUNCHER.lnk` or `START_LAUNCHER.vbs` for normal use.
+- Use `START_LAUNCHER_DEBUG.bat` only when troubleshooting startup errors.
+- Use `UPDATE_PACKAGES.bat` to update the bundled runtime and every recognized
+  virtual environment from the checked-in requirements files.
 
-It downloads the bundled Python runtime when needed, installs launcher and app
-packages, creates `START_LAUNCHER.lnk`, and opens the application. The installer
-deletes `INSTALL.bat` only after a successful installation. It keeps the file
-after a failure so the installation can be retried. Reusable maintenance files
-under `src/scripts/` remain because the package updater depends on them.
-
-## Start The Launcher
-
-Double-click:
-
-```text
-START_LAUNCHER.vbs
-```
-
-This starts with no command window. Network-drive installations automatically
-cache the prepared Python runtime and app files under `%LOCALAPPDATA%`; later
-launches use the matching local runtime instead of importing packages across
-the network.
-
-Apps open in a Microsoft Edge Guest window with extensions disabled. Streamlit
-listens only on `127.0.0.1` with CORS and XSRF protection enabled. Closing the
-launcher stops the complete app process tree, and the next launch removes any
-identity-matched process left by an earlier crash.
-
-For troubleshooting only, use:
-
-```text
-START_LAUNCHER_DEBUG.bat
-```
-
-## Apps Folder
-
-All user-facing Streamlit apps live in:
-
-```text
-apps/
-```
-
-Each app is a normal folder:
-
-```text
-apps/
-  my_new_app/
-    app.py
-    requirements.txt
-    assets/
-      icon.svg
-```
-
-The launcher reads `apps/apps.json` to know which apps to show.
-
-## Create A New App
-
-1. Copy the template folder:
+To update an existing clone without rebuilding the application:
 
 ```powershell
-Copy-Item -Recurse .\apps\app_template .\apps\my_new_app
+git pull --ff-only origin main
+.\UPDATE_PACKAGES.bat
 ```
 
-2. Edit the app:
+The launcher opens apps in an isolated Microsoft Edge Guest window with browser
+extensions disabled. App servers bind only to `127.0.0.1`, use Streamlit's CORS
+and XSRF protections, and are stopped when the launcher exits. On startup, the
+launcher also removes identity-matched processes left by an earlier crash.
 
-```text
-apps/my_new_app/app.py
+## Add An App
+
+Application files live in `src/apps`. Copy the template:
+
+```powershell
+Copy-Item -Recurse .\src\apps\app_template .\src\apps\my_app
 ```
 
-Your `app.py` can be any Streamlit app:
-
-```python
-import streamlit as st
-
-st.title("My New App")
-st.write("Hello from the Unified Streamlit Launcher.")
-```
-
-3. Add Python libraries in:
-
-```text
-apps/my_new_app/requirements.txt
-```
-
-Example:
-
-```text
-streamlit>=1.40,<2
-pandas>=2.2,<3
-plotly>=5,<6
-```
-
-4. Add an icon:
-
-```text
-apps/my_new_app/assets/icon.svg
-```
-
-You can also reuse an existing icon while testing.
-
-## Register The App
-
-Open:
-
-```text
-apps/apps.json
-```
-
-Add a new entry to the `applications` list:
+Edit `src/apps/my_app/app.py`, list every dependency in
+`src/apps/my_app/requirements.txt`, and provide an icon at
+`src/apps/my_app/assets/icon.svg`. Then add the app to
+`src/apps/apps.json`:
 
 ```json
 {
-  "id": "my-new-app",
-  "name": "My New App",
-  "folder": "my_new_app",
-  "description": "Short description shown in the launcher.",
+  "id": "my-app",
+  "name": "My App",
+  "folder": "my_app",
+  "description": "A short description shown in the launcher.",
   "category": "General",
   "version": "1.0.0",
   "display_order": 11,
@@ -147,82 +64,47 @@ Add a new entry to the `applications` list:
 }
 ```
 
-Important fields:
+Restart the launcher after changing the registry. Bump `version` whenever an
+app's dependencies or behavior changes.
 
-- `id`: stable unique app id, lowercase letters, numbers, and dashes.
-- `name`: label users see in the launcher.
-- `folder`: folder name under `apps/`.
-- `description`: one sentence for the app card.
-- `category`: grouping/filter label.
-- `version`: bump this when dependencies or app behavior changes.
-- `display_order`: sort order in the launcher.
-- `enabled`: set `false` to hide the app without deleting it.
-- `icon`: path inside the app folder.
-
-Restart the launcher after editing `apps/apps.json`.
-
-## Update Python Libraries
-
-When you add or change libraries, update requirements and refresh the bundled
-runtime. Do not rely on manual `pip install` commands.
-
-For an app dependency:
+To add or change a dependency and refresh the runtime in one command:
 
 ```powershell
-.\src\scripts\update_dependencies.ps1 -Target app -AppId my_new_app -Package "plotly>=5,<6"
+.\src\scripts\update_dependencies.ps1 -Target app -AppId my-app -Package "plotly>=5,<6"
 ```
 
-For launcher/UI dependencies:
+## Project Structure
+
+```text
+Unified-Pipeline-Launcher/
+|-- INSTALL.bat                 Temporary one-time installer
+|-- START_LAUNCHER.vbs          Normal no-console launcher
+|-- START_LAUNCHER_DEBUG.bat    Troubleshooting launcher
+|-- UPDATE_PACKAGES.bat         Python environment updater
+|-- README.md
+|-- LICENSE
+`-- src/
+    |-- apps/                   App registry and Streamlit apps
+    |-- config/                 Launcher configuration
+    |-- launcher/               Desktop application
+    |-- scripts/                Install, update, and build support
+    |-- tests/                  Automated tests
+    `-- pyproject.toml           Python package metadata
+```
+
+## Development
+
+Use Python 3.11 or 3.12:
 
 ```powershell
-.\src\scripts\update_dependencies.ps1 -Target launcher -Package "package-name>=1,<2"
+py -3.11 -m venv .venv
+.\.venv\Scripts\python.exe -m pip install -r .\src\requirements-dev.txt
+Set-Location .\src
+..\.venv\Scripts\python.exe -m pytest
 ```
 
-To reinstall everything already listed in requirements files:
-
-```text
-UPDATE_PACKAGES.bat
-```
-
-Close the launcher before running it. The updater upgrades the shared runtime
-and every recognized repository or per-app virtual environment, then runs
-`pip check` and verifies that Streamlit imports successfully. It continues
-checking the remaining environments if one fails and reports all failures.
-
-## Pull Updates Without Rebuilding
-
-On a machine that already has the repository:
+Run the public readiness checks from the repository root:
 
 ```powershell
-git pull --ff-only origin main
-.\UPDATE_PACKAGES.bat
-.\src\scripts\create_launcher_shortcut.ps1
+.\src\scripts\public_quality_gate.ps1
 ```
-
-Users can then double-click:
-
-```text
-START_LAUNCHER.lnk
-```
-
-or:
-
-```text
-START_LAUNCHER.vbs
-```
-
-## App Checklist
-
-Before sharing a new app:
-
-- The folder is under `apps/`.
-- `app.py` runs with Streamlit.
-- `requirements.txt` lists every needed library.
-- `assets/icon.svg` exists.
-- `apps/apps.json` has a unique `id`.
-- The app opens from the launcher.
-
-## Source Code
-
-Source code and maintainer tools live in `src/`. Regular app authors do not
-need to edit those files unless they are changing the launcher itself.

@@ -1,6 +1,6 @@
 <#
 .SYNOPSIS
-    Build the one-click Setup.exe installer for the Unified Streamlit Launcher.
+    Build the one-click Setup.exe installer for the Unified Pipeline Launcher.
 
 .DESCRIPTION
     1. Builds the portable release folder (launcher.exe + runtime + apps...).
@@ -21,9 +21,9 @@ param(
 
 $ErrorActionPreference = "Stop"
 $Root = Split-Path -Parent $PSScriptRoot
-$ReleaseDir = Join-Path $Root "build\Unified-Streamlit-Launcher"
+$ReleaseDir = Join-Path $Root "build\Unified-Pipeline-Launcher"
 $Nsi = Join-Path $Root "build_scripts\installer.nsis"
-$Setup = Join-Path $Root "build\UnifiedStreamlitLauncherSetup.exe"
+$Setup = Join-Path $Root "build\UnifiedPipelineLauncherSetup.exe"
 
 # 1. Build the release folder unless reusing one.
 if (-not $SkipBuild) {

@@ -13,7 +13,7 @@
     .\src\scripts\create_launcher_shortcut.ps1
 
 .EXAMPLE
-    .\src\scripts\create_launcher_shortcut.ps1 -ReleaseDir "Z:\Vinay Vaida\Unified-Streamlit-Launcher" -Launch
+    .\src\scripts\create_launcher_shortcut.ps1 -ReleaseDir "Z:\Unified-Pipeline-Launcher" -Launch
 #>
 
 param(
@@ -66,7 +66,7 @@ $Shortcut.TargetPath = $TargetPath
 $Shortcut.Arguments = $Arguments
 $Shortcut.WorkingDirectory = $WorkingDirectory
 $Shortcut.WindowStyle = 7
-$Shortcut.Description = "Unified Streamlit Launcher"
+$Shortcut.Description = "Unified Pipeline Launcher"
 $Shortcut.Save()
 
 Write-Host "Created: $ShortcutPath"

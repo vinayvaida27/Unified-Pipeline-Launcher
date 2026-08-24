@@ -1,6 +1,6 @@
 @echo off
 :: ============================================================
-:: Unified Streamlit Launcher (debug console)
+:: Unified Pipeline Launcher (debug console)
 :: Use START_LAUNCHER.lnk or START_LAUNCHER.vbs for normal no-console launches.
 :: ============================================================
 

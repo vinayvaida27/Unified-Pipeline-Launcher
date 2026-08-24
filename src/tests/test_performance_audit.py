@@ -42,7 +42,7 @@ def test_launcher_window_one_app_and_two_app_startup(repo_root, config, tmp_path
 
     from launcher.ui.main_window import MainWindow
 
-    apps = discover_apps(repo_root / "apps")[:2]
+    apps = discover_apps(repo_root / "src" / "apps")[:2]
     manager = ProcessManager(tmp_path / "logs")
     qt_app = QApplication.instance() or QApplication([])
     window_started = time.perf_counter()
@@ -79,7 +79,7 @@ def test_launcher_window_one_app_and_two_app_startup(repo_root, config, tmp_path
 
 def test_five_concurrent_apps_and_twenty_lifecycle_cycles(repo_root, tmp_path):
     psutil = pytest.importorskip("psutil")
-    apps = discover_apps(repo_root / "apps")[:5]
+    apps = discover_apps(repo_root / "src" / "apps")[:5]
     manager = ProcessManager(tmp_path / "logs")
     parent = psutil.Process()
     parent_memory_before = parent.memory_info().rss

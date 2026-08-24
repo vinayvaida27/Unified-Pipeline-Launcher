@@ -1,4 +1,4 @@
-"""Build the portable Unified Streamlit Launcher release folder."""
+"""Build the portable Unified Pipeline Launcher release folder."""
 
 from __future__ import annotations
 
@@ -10,7 +10,10 @@ import sys
 from datetime import datetime, timezone
 from pathlib import Path
 
-from create_pyinstaller_spec import generate_spec
+if __package__:
+    from .create_pyinstaller_spec import generate_spec
+else:
+    from create_pyinstaller_spec import generate_spec
 
 
 class ExeBuilder:
@@ -20,7 +23,7 @@ class ExeBuilder:
         self.project_root = (project_root or Path(__file__).resolve().parent.parent).resolve()
         self.public_root = self.project_root.parent if self.project_root.name == "src" else self.project_root
         self.build_dir = self.project_root / "build"
-        self.release_dir = self.build_dir / "Unified-Streamlit-Launcher"
+        self.release_dir = self.build_dir / "Unified-Pipeline-Launcher"
         self.pyinstaller_dist = self.build_dir / "pyinstaller"
         self.pyinstaller_work = self.build_dir / "pyinstaller-work"
 
@@ -73,7 +76,7 @@ class ExeBuilder:
             if dst.exists():
                 shutil.rmtree(dst)
             shutil.copytree(src, dst, ignore=shutil.ignore_patterns("*.md"))
-        apps_src = self.public_root / "apps"
+        apps_src = self.project_root / "apps"
         apps_dst = self.release_dir / "apps"
         if apps_dst.exists():
             shutil.rmtree(apps_dst)
@@ -90,7 +93,7 @@ class ExeBuilder:
         (self.release_dir / "release_info.json").write_text(
             json.dumps(
                 {
-                    "name": "Unified-Streamlit-Launcher",
+                    "name": "Unified-Pipeline-Launcher",
                     "built_at": datetime.now(timezone.utc).isoformat(),
                     "apps_external_to_exe": True,
                     "app_registry": "apps/apps.json",
@@ -138,7 +141,7 @@ class ExeBuilder:
 
     def build(self) -> Path:
         print("=" * 72)
-        print("Unified Streamlit Launcher EXE Build")
+        print("Unified Pipeline Launcher EXE Build")
         print("=" * 72)
         self.clean_previous()
         self.run_tests()

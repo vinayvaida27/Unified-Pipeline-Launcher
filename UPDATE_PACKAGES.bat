@@ -1,6 +1,6 @@
 @echo off
 setlocal
-title Update Unified Streamlit Launcher Packages
+title Update Unified Pipeline Launcher Packages
 
 set "ROOT=%~dp0"
 set "UPDATER=%ROOT%src\scripts\update_all_environments.ps1"

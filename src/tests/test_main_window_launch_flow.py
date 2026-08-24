@@ -107,7 +107,7 @@ def qt_app():
 
 
 def _app(repo_root):
-    return discover_apps(repo_root / "apps")[0]
+    return discover_apps(repo_root / "src" / "apps")[0]
 
 
 def _state(app, tmp_path, port=63260, pid=1234):

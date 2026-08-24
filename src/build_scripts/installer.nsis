@@ -1,4 +1,4 @@
-; One-click installer for the Unified Streamlit Launcher.
+; One-click installer for the Unified Pipeline Launcher.
 ; Per-user install (no administrator rights required), Start Menu + Desktop
 ; shortcuts, and a registered uninstaller in Add/Remove Programs.
 ;
@@ -8,25 +8,25 @@
 Unicode true
 !include "MUI2.nsh"
 
-!define APP_NAME    "Unified Streamlit Launcher"
+!define APP_NAME    "Unified Pipeline Launcher"
 !define APP_VERSION "1.0.0"
 !define PUBLISHER   "OrganizationName"
 !define EXE_NAME    "launcher.exe"
-!define UNINST_KEY  "Software\Microsoft\Windows\CurrentVersion\Uninstall\UnifiedStreamlitLauncher"
+!define UNINST_KEY  "Software\Microsoft\Windows\CurrentVersion\Uninstall\UnifiedPipelineLauncher"
 
 ; SOURCE_DIR (payload) and OUT_FILE may be passed absolutely by build_installer.ps1
 ; via /DSOURCE_DIR=... /DOUT_FILE=...; otherwise fall back to repo-relative paths.
 !ifndef SOURCE_DIR
-  !define SOURCE_DIR "..\build\Unified-Streamlit-Launcher"
+  !define SOURCE_DIR "..\build\Unified-Pipeline-Launcher"
 !endif
 !ifndef OUT_FILE
-  !define OUT_FILE "..\build\UnifiedStreamlitLauncherSetup.exe"
+!define OUT_FILE "..\build\UnifiedPipelineLauncherSetup.exe"
 !endif
 
 Name "${APP_NAME}"
 OutFile "${OUT_FILE}"
-InstallDir "$LOCALAPPDATA\UnifiedStreamlitLauncher"
-InstallDirRegKey HKCU "Software\UnifiedStreamlitLauncher" "InstallDir"
+InstallDir "$LOCALAPPDATA\UnifiedPipelineLauncher"
+InstallDirRegKey HKCU "Software\UnifiedPipelineLauncher" "InstallDir"
 RequestExecutionLevel user
 SetCompressor /SOLID lzma
 
@@ -62,7 +62,7 @@ Section "Install"
 
   ; Uninstaller + Add/Remove Programs entry (current user)
   WriteUninstaller "$INSTDIR\Uninstall.exe"
-  WriteRegStr HKCU "Software\UnifiedStreamlitLauncher" "InstallDir" "$INSTDIR"
+  WriteRegStr HKCU "Software\UnifiedPipelineLauncher" "InstallDir" "$INSTDIR"
   WriteRegStr HKCU "${UNINST_KEY}" "DisplayName" "${APP_NAME}"
   WriteRegStr HKCU "${UNINST_KEY}" "DisplayVersion" "${APP_VERSION}"
   WriteRegStr HKCU "${UNINST_KEY}" "Publisher" "${PUBLISHER}"
@@ -90,5 +90,5 @@ Section "Uninstall"
   RMDir /r "$INSTDIR"
 
   DeleteRegKey HKCU "${UNINST_KEY}"
-  DeleteRegKey HKCU "Software\UnifiedStreamlitLauncher"
+  DeleteRegKey HKCU "Software\UnifiedPipelineLauncher"
 SectionEnd

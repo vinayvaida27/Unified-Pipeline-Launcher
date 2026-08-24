@@ -24,7 +24,8 @@ $Root = (Resolve-Path $ReleaseDir).Path
 $ReleaseSourceRoot = Join-Path $Root "src"
 if (-not (Test-Path $ReleaseSourceRoot)) { $ReleaseSourceRoot = $Root }
 
-$AppsJson = Join-Path $Root "apps\apps.json"
+$AppsRoot = Join-Path $ReleaseSourceRoot "apps"
+$AppsJson = Join-Path $AppsRoot "apps.json"
 $ConfigPath = Join-Path $ReleaseSourceRoot "config\launcher_config.json"
 if (-not (Test-Path $AppsJson)) { throw "App registry not found: $AppsJson" }
 if (-not (Test-Path $ConfigPath)) { throw "Launcher config not found: $ConfigPath" }
@@ -33,7 +34,7 @@ $Registry = Get-Content $AppsJson -Raw | ConvertFrom-Json
 $Config = Get-Content $ConfigPath -Raw | ConvertFrom-Json
 $RequirementsByApp = @{}
 foreach ($App in $Registry.applications) {
-    $Requirement = Join-Path $Root "apps\$($App.folder)\requirements.txt"
+    $Requirement = Join-Path $AppsRoot "$($App.folder)\requirements.txt"
     if (Test-Path $Requirement) { $RequirementsByApp[$App.id] = $Requirement }
 }
 
@@ -90,7 +91,7 @@ if (Test-Path $EnvironmentRoot) {
 
 Write-Host ""
 Write-Host "============================================================"
-Write-Host "  Unified Streamlit Launcher -- Package Update"
+Write-Host "  Unified Pipeline Launcher -- Package Update"
 Write-Host "============================================================"
 Write-Host "Repository : $Root"
 Write-Host "Venvs     : $($Jobs.Count)"

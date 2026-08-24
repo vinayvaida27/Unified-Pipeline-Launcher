@@ -34,34 +34,34 @@ def _config_with_venvs(config):
 
 
 def test_calculates_deterministic_environment_path(temp_config, repo_root):
-    app = discover_apps(repo_root / "apps")[0]
+    app = discover_apps(repo_root / "src" / "apps")[0]
     manager = EnvironmentManager(temp_config, repo_root / "fake-python.exe")
     assert manager.environment_path_for(app) == temp_config.paths.local_cache_directory / "environments" / app.id / app.version
 
 
 def test_detects_ready_marker(temp_config, repo_root):
-    app = discover_apps(repo_root / "apps")[0]
+    app = discover_apps(repo_root / "src" / "apps")[0]
     manager = EnvironmentManager(temp_config, repo_root / "fake-python.exe")
     _seed_marker(manager, app)
     assert manager.is_ready(app)
 
 
 def test_detects_changed_runtime_fingerprint(temp_config, repo_root):
-    app = discover_apps(repo_root / "apps")[0]
+    app = discover_apps(repo_root / "src" / "apps")[0]
     manager = EnvironmentManager(temp_config, repo_root / "fake-python.exe")
     _seed_marker(manager, app, {"runtime_fingerprint": "stale-runtime"})
     assert not manager.is_ready(app)
 
 
 def test_detects_changed_requirements_hash(temp_config, repo_root):
-    app = discover_apps(repo_root / "apps")[0]
+    app = discover_apps(repo_root / "src" / "apps")[0]
     manager = EnvironmentManager(temp_config, repo_root / "fake-python.exe")
     _seed_marker(manager, app, {"requirements_sha256": "wrong"})
     assert not manager.is_ready(app)
 
 
 def test_builds_correct_pip_command(temp_config, repo_root):
-    app = discover_apps(repo_root / "apps")[0]
+    app = discover_apps(repo_root / "src" / "apps")[0]
     manager = EnvironmentManager(temp_config, repo_root / "fake-python.exe")
     command = manager.pip_install_command(app, repo_root / ".venv" / "Scripts" / "python.exe")
     assert command[:4][-3:] == ["-m", "pip", "install"]
@@ -98,7 +98,7 @@ def test_shared_runtime_fast_path(temp_config, repo_root):
     """When create_virtual_environments is False, ensure_environment returns
     the shared runtime state immediately without creating any venv."""
 
-    app = discover_apps(repo_root / "apps")[0]
+    app = discover_apps(repo_root / "src" / "apps")[0]
     # Default config already has create_virtual_environments=False.
     manager = EnvironmentManager(temp_config, repo_root / "fake-python.exe")
     assert not temp_config.runtime.create_virtual_environments
@@ -122,7 +122,7 @@ def test_ensure_environment_runs_full_flow(temp_config, repo_root, monkeypatch):
 
     # Force venv mode for this test regardless of the default config.
     config = _config_with_venvs(temp_config)
-    app = discover_apps(repo_root / "apps")[0]
+    app = discover_apps(repo_root / "src" / "apps")[0]
     manager = EnvironmentManager(config, repo_root / "fake-python.exe")
 
     calls = []

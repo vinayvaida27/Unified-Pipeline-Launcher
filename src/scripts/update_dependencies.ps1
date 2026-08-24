@@ -102,7 +102,8 @@ function Get-AppRequirementFile {
         throw "Use -AppId when -Target app is selected."
     }
 
-    $AppsJson = Join-Path $ReleaseDir "apps\apps.json"
+    $AppsRoot = Join-Path $ReleaseSourceRoot "apps"
+    $AppsJson = Join-Path $AppsRoot "apps.json"
     if (-not (Test-Path $AppsJson)) {
         throw "App registry not found: $AppsJson"
     }
@@ -113,10 +114,10 @@ function Get-AppRequirementFile {
     } | Select-Object -First 1
 
     if (-not $App) {
-        throw "App was not found in apps/apps.json: $RequestedAppId"
+        throw "App was not found in the app registry: $RequestedAppId"
     }
 
-    return Join-Path $ReleaseDir "apps\$($App.folder)\requirements.txt"
+    return Join-Path $AppsRoot "$($App.folder)\requirements.txt"
 }
 
     if ($Package -ne "") {

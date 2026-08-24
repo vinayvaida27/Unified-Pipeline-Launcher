@@ -5,7 +5,8 @@ def test_update_dependencies_refreshes_shared_runtime(source_root):
     script = (source_root / "scripts" / "update_dependencies.ps1").read_text(encoding="utf-8")
 
     assert "requirements-launcher.txt" in script
-    assert "apps\\apps.json" in script
+    assert 'Join-Path $ReleaseSourceRoot "apps"' in script
+    assert 'Join-Path $AppsRoot "apps.json"' in script
     assert "prepare_shared_runtime.ps1" in script
     assert "fetch_runtime.ps1" in script
 

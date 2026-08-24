@@ -35,7 +35,7 @@ If fso.FileExists(launcherExe) Then
 ElseIf fso.FileExists(pythonw) Then
     command = """" & pythonw & """ -m launcher --config """ & config & """"
 Else
-    MsgBox "Could not find launcher.exe or runtime\pythonw.exe in:" & vbCrLf & root, vbCritical, "Unified Streamlit Launcher"
+    MsgBox "Could not find launcher.exe or runtime\pythonw.exe in:" & vbCrLf & root, vbCritical, "Unified Pipeline Launcher"
     WScript.Quit 1
 End If
 

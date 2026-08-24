@@ -1,6 +1,6 @@
 @echo off
 setlocal
-title Install Unified Streamlit Launcher
+title Install Unified Pipeline Launcher
 
 set "ROOT=%~dp0"
 set "DEPLOY=%ROOT%src\scripts\deploy_network.ps1"
@@ -13,7 +13,7 @@ if not exist "%DEPLOY%" (
     exit /b 1
 )
 
-echo Installing Unified Streamlit Launcher...
+echo Installing Unified Pipeline Launcher...
 echo This can take several minutes the first time.
 echo.
 

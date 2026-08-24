@@ -5,6 +5,7 @@ from pathlib import Path
 
 import pytest
 
+from build_scripts.build import ExeBuilder
 from build_scripts.create_pyinstaller_spec import generate_spec
 
 
@@ -12,6 +13,25 @@ def _minimal_project(root: Path) -> None:
     (root / "launcher").mkdir(parents=True)
     (root / "launcher" / "__main__.py").write_text("print('launcher')\n", encoding="utf-8")
     (root / "assets" / "launcher").mkdir(parents=True)
+
+
+def test_public_repository_layout_is_minimal(repo_root, source_root):
+    assert (source_root / "apps" / "apps.json").is_file()
+    assert not (repo_root / "apps").exists()
+    assert not (repo_root / "TEST_AUDIT.md").exists()
+
+    tracked = subprocess.run(
+        ["git", "ls-files"],
+        cwd=repo_root,
+        check=True,
+        capture_output=True,
+        text=True,
+    ).stdout.splitlines()
+    assert not any(path.startswith((".agents/", "audit_artifacts/", "src/.autoresearch/")) for path in tracked)
+    assert [path for path in tracked if path.endswith(".md")] == ["README.md"]
+
+    pyproject = (source_root / "pyproject.toml").read_text(encoding="utf-8")
+    assert 'name = "unified-pipeline-launcher"' in pyproject
 
 
 def test_generate_spec_ignores_invalid_placeholder_icon(tmp_path):
@@ -134,6 +154,36 @@ def test_release_build_copies_launcher_requirements(source_root):
     assert "START_LAUNCHER_DEBUG.bat" in build_script
 
 
+def test_release_build_copies_source_apps_into_portable_layout(tmp_path):
+    public_root = tmp_path / "project"
+    source_root = public_root / "src"
+    builder = ExeBuilder(source_root)
+
+    (builder.pyinstaller_dist / "launcher").mkdir(parents=True)
+    (builder.pyinstaller_dist / "launcher" / "launcher.exe").touch()
+    for name in ("assets", "config", "runtime"):
+        (source_root / name).mkdir(parents=True)
+    (source_root / "config" / "launcher_config.json").write_text("{}\n", encoding="utf-8")
+    (source_root / "apps").mkdir()
+    (source_root / "apps" / "apps.json").write_text('{"applications": []}\n', encoding="utf-8")
+    (source_root / "requirements-launcher.txt").write_text("PySide6\n", encoding="utf-8")
+    for name in ("README.md", "LICENSE", "START_LAUNCHER.vbs", "START_LAUNCHER_DEBUG.bat"):
+        (public_root / name).write_text(name, encoding="utf-8")
+
+    builder.copy_release_files()
+
+    assert (builder.release_dir / "apps" / "apps.json").is_file()
+    assert (builder.release_dir / "config" / "launcher_config.json").is_file()
+    assert builder.release_dir.name == "Unified-Pipeline-Launcher"
+
+
+def test_runtime_preparation_detects_portable_release_layout(source_root):
+    script = (source_root / "scripts" / "prepare_shared_runtime.ps1").read_text(encoding="utf-8")
+
+    assert 'Join-Path $BuildRelease "runtime\\python.exe"' in script
+    assert 'Join-Path $BuildRelease "src\\runtime\\python.exe"' not in script
+
+
 def test_double_click_installer_keeps_itself_on_failure_and_deletes_after_success(repo_root):
     script = (repo_root / "INSTALL.bat").read_text(encoding="utf-8")
 
@@ -167,9 +217,9 @@ def test_package_updater_dry_run_discovers_without_modifying(repo_root, tmp_path
     (release / "src" / "requirements-dev.txt").write_text("pytest\n", encoding="utf-8")
     (release / ".venv" / "Scripts").mkdir(parents=True)
     (release / ".venv" / "Scripts" / "python.exe").touch()
-    (release / "apps" / "demo").mkdir(parents=True)
-    (release / "apps" / "demo" / "requirements.txt").write_text("streamlit\n", encoding="utf-8")
-    (release / "apps" / "apps.json").write_text(
+    (release / "src" / "apps" / "demo").mkdir(parents=True)
+    (release / "src" / "apps" / "demo" / "requirements.txt").write_text("streamlit\n", encoding="utf-8")
+    (release / "src" / "apps" / "apps.json").write_text(
         json.dumps({"applications": [{"id": "demo", "folder": "demo"}]}),
         encoding="utf-8",
     )

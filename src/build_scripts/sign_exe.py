@@ -11,7 +11,7 @@ def main() -> int:
     parser = argparse.ArgumentParser()
     parser.add_argument("--signtool", required=True, help="Path to signtool.exe")
     parser.add_argument("--cert-subject", required=True, help="Certificate subject name")
-    parser.add_argument("--exe", default="build/Unified-Streamlit-Launcher/launcher.exe")
+    parser.add_argument("--exe", default="build/Unified-Pipeline-Launcher/launcher.exe")
     args = parser.parse_args()
 
     exe_path = Path(args.exe)
