@@ -52,20 +52,18 @@ def test_fails_when_process_exits():
         HealthChecker().wait_until_healthy(FakeProcess(exit_code=2), port, 1)
 
 
-def test_succeeds_when_streamlit_log_reports_ready(tmp_path, monkeypatch):
+def test_healthy_endpoint_does_not_depend_on_streamlit_log_wording(tmp_path, monkeypatch):
     port = PortManager().get_available_port()
     log_path = tmp_path / "app.log"
-    log_path.write_text(
-        "You can now view your Streamlit app in your browser.\n"
-        f"URL: http://127.0.0.1:{port}\n",
-        encoding="utf-8",
-    )
-    monkeypatch.setattr(HealthChecker, "_url_ok", staticmethod(lambda url: url == f"http://127.0.0.1:{port}/_stcore/health"))
+    log_path.write_text("Streamlit logging format changed\n", encoding="utf-8")
+    monkeypatch.setattr(HealthChecker, "_url_ok", staticmethod(lambda url: True))
+
     url = HealthChecker().wait_until_healthy(FakeProcess(), port, 1, log_path)
+
     assert url == f"http://127.0.0.1:{port}"
 
 
-def test_old_log_port_does_not_confirm_current_allocated_port(tmp_path, monkeypatch):
+def test_stale_log_port_does_not_block_current_healthy_endpoint(tmp_path, monkeypatch):
     requested_port = PortManager().get_available_port()
     stale_port = PortManager().get_available_port()
     log_path = tmp_path / "app.log"
@@ -79,21 +77,9 @@ def test_old_log_port_does_not_confirm_current_allocated_port(tmp_path, monkeypa
         "_url_ok",
         staticmethod(lambda url: url == f"http://127.0.0.1:{requested_port}/_stcore/health"),
     )
-    with pytest.raises(ApplicationHealthCheckError):
-        HealthChecker().wait_until_healthy(FakeProcess(), requested_port, 1, log_path)
+    url = HealthChecker().wait_until_healthy(FakeProcess(), requested_port, 1, log_path)
 
-
-def test_log_parser_ignores_urls_from_other_ports(tmp_path):
-    expected_port = PortManager().get_available_port()
-    stale_port = PortManager().get_available_port()
-    log_path = tmp_path / "app.log"
-    log_path.write_text(
-        "You can now view your Streamlit app in your browser.\n"
-        f"URL: http://127.0.0.1:{stale_port}\n",
-        encoding="utf-8",
-    )
-
-    assert HealthChecker.streamlit_ready_url_from_log(log_path, expected_port=expected_port) is None
+    assert url == f"http://127.0.0.1:{requested_port}"
 
 
 def test_port_parser_ignores_bad_ports():

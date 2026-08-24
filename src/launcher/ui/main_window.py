@@ -68,8 +68,8 @@ class MainWindow(QMainWindow):
         self._user_stopped_ids: set[str] = set()
         self._active_startups = 0
         self._parallel_startup_limit = max(1, config.launcher.maximum_parallel_startups)
-        self.thread_pool = QThreadPool.globalInstance()
-        self.thread_pool.setMaxThreadCount(max(self.thread_pool.maxThreadCount(), self._parallel_startup_limit))
+        self.thread_pool = QThreadPool(self)
+        self.thread_pool.setMaxThreadCount(self._parallel_startup_limit)
         self.setWindowTitle(config.platform_name)
         self.resize(config.window.width, config.window.height)
         self.setMinimumSize(config.window.minimum_width, config.window.minimum_height)
@@ -478,9 +478,18 @@ class MainWindow(QMainWindow):
         self.stop_all_button.setEnabled(bool(running or self._active_startups or queued))
 
     def _sync_process_liveness(self) -> None:
-        """Mark cards Failed when a running app process has died."""
+        """Reconcile delayed startup signals and detect dead app processes."""
 
         for state in self.process_manager.running_states():
+            if (
+                state.status == ApplicationStatus.RUNNING
+                and state.app_id in self._starting_ids
+                and self.thread_pool.activeThreadCount() == 0
+            ):
+                token = self._launch_tokens.get(state.app_id)
+                if token:
+                    self._start_finished(state.app_id, token, state)
+                continue
             if state.status != ApplicationStatus.RUNNING:
                 continue
             if state.process and state.process.poll() is not None:

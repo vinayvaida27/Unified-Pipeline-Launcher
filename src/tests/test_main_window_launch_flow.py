@@ -5,12 +5,14 @@ import threading
 import time
 from dataclasses import replace
 from datetime import datetime, timezone
+from types import SimpleNamespace
 
 import pytest
 
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 
 pytest.importorskip("PySide6")
+from PySide6.QtCore import QThreadPool
 from PySide6.QtWidgets import QApplication, QMessageBox
 
 from launcher.app_discovery import discover_apps
@@ -131,6 +133,40 @@ def _window(qt_app, config, app, process_manager):
     window = MainWindow(config, [app], FakeEnvironmentManager(), process_manager)
     window.liveness_timer.stop()
     return window
+
+
+def test_startup_jobs_use_a_dedicated_bounded_thread_pool(qt_app, config, repo_root):
+    app = _app(repo_root)
+    config = replace(config, launcher=replace(config.launcher, maximum_parallel_startups=4))
+    window = _window(qt_app, config, app, FakeProcessManager())
+
+    assert window.thread_pool is not QThreadPool.globalInstance()
+    assert window.thread_pool.parent() is window
+    assert window.thread_pool.maxThreadCount() == 4
+
+
+def test_liveness_timer_finishes_a_delayed_startup_signal(qt_app, config, repo_root, tmp_path):
+    app = _app(repo_root)
+    state = _state(app, tmp_path)
+    config = replace(config, launcher=replace(config.launcher, open_browser_after_start=False))
+    window = _window(qt_app, config, app, FakeProcessManager(state))
+    token = "delayed-finish"
+    window._launch_tokens[app.id] = token
+    window._active_launch_tokens.add(token)
+    window._starting_ids.add(app.id)
+    window._active_startups = 1
+    window.cards[app.id].set_status(ApplicationStatus.STARTING, "Starting application")
+
+    thread_pool = window.thread_pool
+    window.thread_pool = SimpleNamespace(activeThreadCount=lambda: 1)
+    window._sync_process_liveness()
+    assert window._active_startups == 1
+
+    window.thread_pool = thread_pool
+    window._sync_process_liveness()
+    assert window._active_startups == 0
+    assert app.id not in window._starting_ids
+    assert window.cards[app.id].status.text() == ApplicationStatus.RUNNING.value
 
 
 def test_only_one_browser_open_occurs_per_launch(qt_app, config, repo_root, tmp_path, monkeypatch):

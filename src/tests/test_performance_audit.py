@@ -4,14 +4,12 @@ import json
 import os
 import sys
 import time
-import tracemalloc
 from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 
 import pytest
 
 from launcher.app_discovery import discover_apps
-from launcher.health_checker import HealthChecker
 from launcher.models import EnvironmentState
 from launcher.process_manager import ProcessManager
 
@@ -163,32 +161,3 @@ def test_five_concurrent_apps_and_twenty_lifecycle_cycles(repo_root, tmp_path):
         "process_count_after": process_count_after,
     }
     print("AUDIT_METRICS=" + json.dumps(metrics, sort_keys=True))
-
-
-def test_large_health_log_scan(tmp_path):
-    psutil = pytest.importorskip("psutil")
-    log_path = tmp_path / "large.log"
-    marker = (
-        "\nYou can now view your Streamlit app in your browser.\n"
-        "http://127.0.0.1:63123\n"
-    )
-    log_path.write_text(("x" * (64 * 1024 * 1024)) + marker, encoding="utf-8")
-    process = psutil.Process()
-    memory_before = process.memory_info().rss
-    tracemalloc.start()
-    started = time.perf_counter()
-
-    url = HealthChecker.streamlit_ready_url_from_log(log_path, expected_port=63123)
-
-    elapsed = time.perf_counter() - started
-    _, peak_memory = tracemalloc.get_traced_memory()
-    tracemalloc.stop()
-    memory_after = process.memory_info().rss
-    assert url == "http://127.0.0.1:63123"
-    metrics = {
-        "health_log_size_mib": round(log_path.stat().st_size / 1024 / 1024, 2),
-        "health_log_scan_seconds": round(elapsed, 3),
-        "health_log_scan_rss_delta_mib": round((memory_after - memory_before) / 1024 / 1024, 2),
-        "health_log_scan_peak_python_mib": round(peak_memory / 1024 / 1024, 2),
-    }
-    print("AUDIT_LOG_METRICS=" + json.dumps(metrics, sort_keys=True))
