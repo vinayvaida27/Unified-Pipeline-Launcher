@@ -232,7 +232,30 @@ def test_launcher_layout_fits_at_minimum_width(qt_app, config, repo_root):
     qt_app.processEvents()
 
     assert window.app_scroll.horizontalScrollBar().maximum() == 0
-    assert all(not card.open_button.icon().isNull() for card in window.cards.values())
+    assert window._column_count == 2
+    window.close()
+
+
+def test_launcher_uses_three_columns_on_wide_screens(qt_app, config, repo_root):
+    base_app = _app(repo_root)
+    apps = [
+        replace(base_app, id=f"wide-{index}", name=f"Application {index}", display_order=index)
+        for index in range(1, 5)
+    ]
+    window = MainWindow(config, apps, FakeEnvironmentManager(), FakeProcessManager())
+    window.liveness_timer.stop()
+    window.resize(1800, 900)
+    window.show()
+    qt_app.processEvents()
+
+    positions = []
+    for app in apps:
+        item_index = window.grid.indexOf(window.cards[app.id])
+        row, column, _, _ = window.grid.getItemPosition(item_index)
+        positions.append((row, column))
+
+    assert window._column_count == 3
+    assert positions == [(0, 0), (0, 1), (0, 2), (1, 0)]
     window.close()
 
 
@@ -246,6 +269,45 @@ def test_filter_shows_result_count_and_empty_state(qt_app, config, repo_root):
 
     assert window.results_label.text() == "0 applications"
     assert window.empty_state.isVisible()
+    window.close()
+
+
+def test_filter_compacts_matching_cards_to_first_grid_cell(qt_app, config, repo_root):
+    base_app = _app(repo_root)
+    apps = [
+        replace(base_app, id=f"filter-{index}", name=name, display_order=index)
+        for index, name in enumerate(("Alpha", "Beta", "Gamma", "Target Application"), start=1)
+    ]
+    window = MainWindow(config, apps, FakeEnvironmentManager(), FakeProcessManager())
+    window.liveness_timer.stop()
+    window.resize(1800, 900)
+    window.show()
+
+    window.search.setText("Target")
+    qt_app.processEvents()
+
+    item_index = window.grid.indexOf(window.cards["filter-4"])
+    row, column, _, _ = window.grid.getItemPosition(item_index)
+    assert (row, column) == (0, 0)
+    window.close()
+
+
+def test_card_hides_actions_that_are_not_available(qt_app, config, repo_root):
+    app = _app(repo_root)
+    window = _window(qt_app, config, app, FakeProcessManager())
+    card = window.cards[app.id]
+
+    card.set_status(ApplicationStatus.STOPPED)
+    assert card.stop_button.isHidden()
+    assert card.restart_button.isHidden()
+
+    card.set_status(ApplicationStatus.STARTING)
+    assert not card.stop_button.isHidden()
+    assert card.restart_button.isHidden()
+
+    card.set_status(ApplicationStatus.RUNNING)
+    assert not card.stop_button.isHidden()
+    assert not card.restart_button.isHidden()
     window.close()
 
 

@@ -21,7 +21,6 @@ from PySide6.QtWidgets import (
     QMessageBox,
     QPushButton,
     QScrollArea,
-    QStyle,
     QVBoxLayout,
     QWidget,
 )
@@ -57,6 +56,8 @@ class MainWindow(QMainWindow):
         self.environment_manager = environment_manager
         self.process_manager = process_manager
         self.cards: dict[str, AppCard] = {}
+        self._filtered_app_ids = [app.id for app in apps]
+        self._column_count = 0
         self._startup_queue: deque[str] = deque()
         self._queued_ids: set[str] = set()
         self._starting_ids: set[str] = set()
@@ -88,11 +89,13 @@ class MainWindow(QMainWindow):
 
         header = QWidget()
         header.setObjectName("header")
+        header.setFixedHeight(82)
         header_layout = QHBoxLayout(header)
-        header_layout.setContentsMargins(26, 20, 26, 20)
-        header_layout.setSpacing(10)
+        header_layout.setContentsMargins(24, 14, 24, 14)
+        header_layout.setSpacing(8)
         title_box = QVBoxLayout()
-        title_box.setSpacing(3)
+        title_box.setSpacing(1)
+        title_box.setAlignment(Qt.AlignmentFlag.AlignVCenter)
         title = QLabel(self.config.platform_name)
         title.setObjectName("platformTitle")
         self.results_label = QLabel(self._application_count_text(len(self.apps)))
@@ -105,46 +108,49 @@ class MainWindow(QMainWindow):
         settings = QPushButton("Settings")
         about.setObjectName("ghost")
         settings.setObjectName("ghost")
-        about.setIcon(self.style().standardIcon(QStyle.StandardPixmap.SP_MessageBoxInformation))
-        settings.setIcon(self.style().standardIcon(QStyle.StandardPixmap.SP_FileDialogDetailedView))
+        about.setFixedHeight(34)
+        settings.setFixedHeight(34)
         about.setToolTip("About this launcher")
         settings.setToolTip("View launcher settings")
         settings.clicked.connect(lambda: SettingsDialog(self.config, self).exec())
         about.clicked.connect(lambda: show_about(self, self.config.platform_name))
         header_layout.addLayout(title_box)
         header_layout.addStretch(1)
-        header_layout.addWidget(self.startup_summary)
-        header_layout.addWidget(settings)
-        header_layout.addWidget(about)
+        header_layout.addWidget(self.startup_summary, 0, Qt.AlignmentFlag.AlignVCenter)
+        header_layout.addWidget(settings, 0, Qt.AlignmentFlag.AlignVCenter)
+        header_layout.addWidget(about, 0, Qt.AlignmentFlag.AlignVCenter)
         layout.addWidget(header)
 
         toolbar_holder = QWidget()
         toolbar_holder.setObjectName("toolbar")
+        toolbar_holder.setFixedHeight(64)
         toolbar = QHBoxLayout(toolbar_holder)
-        toolbar.setContentsMargins(26, 14, 26, 14)
+        toolbar.setContentsMargins(24, 12, 24, 12)
         toolbar.setSpacing(10)
         self.search = QLineEdit()
         self.search.setPlaceholderText("Search applications")
         self.search.setMinimumWidth(240)
+        self.search.setMaximumWidth(560)
+        self.search.setFixedHeight(40)
         self.search.setClearButtonEnabled(True)
         self.search.setAccessibleName("Search applications")
         self.category = QComboBox()
         self.category.addItems(["All categories"] + sorted({app.category for app in self.apps}))
-        self.category.setMinimumWidth(180)
+        self.category.setFixedSize(190, 40)
         self.category.setAccessibleName("Application category")
         self.open_all_button = QPushButton("Open All")
         self.stop_all_button = QPushButton("Stop All")
         self.open_all_button.setObjectName("primary")
         self.stop_all_button.setObjectName("danger")
-        self.open_all_button.setIcon(self.style().standardIcon(QStyle.StandardPixmap.SP_MediaPlay))
-        self.stop_all_button.setIcon(self.style().standardIcon(QStyle.StandardPixmap.SP_MediaStop))
+        self.open_all_button.setFixedSize(96, 40)
+        self.stop_all_button.setFixedSize(92, 40)
         self.open_all_button.setToolTip("Open all visible applications")
         self.stop_all_button.setToolTip("Stop all running applications")
         self.open_all_button.clicked.connect(self.open_all_apps)
         self.stop_all_button.clicked.connect(self.stop_all_apps)
         toolbar.addWidget(self.search, 1)
         toolbar.addWidget(self.category)
-        toolbar.addStretch(0)
+        toolbar.addStretch(1)
         toolbar.addWidget(self.open_all_button)
         toolbar.addWidget(self.stop_all_button)
         layout.addWidget(toolbar_holder)
@@ -152,17 +158,15 @@ class MainWindow(QMainWindow):
         self.grid_widget = QWidget()
         self.grid_widget.setObjectName("grid")
         self.grid = QGridLayout(self.grid_widget)
-        self.grid.setContentsMargins(26, 22, 26, 26)
-        self.grid.setHorizontalSpacing(14)
-        self.grid.setVerticalSpacing(14)
-        self.grid.setColumnStretch(0, 1)
-        self.grid.setColumnStretch(1, 1)
+        self.grid.setContentsMargins(24, 20, 24, 24)
+        self.grid.setHorizontalSpacing(12)
+        self.grid.setVerticalSpacing(12)
+        self.grid.setAlignment(Qt.AlignmentFlag.AlignTop)
         self.empty_state = QLabel("No applications match the current filters.")
         self.empty_state.setObjectName("emptyState")
         self.empty_state.setAlignment(Qt.AlignmentFlag.AlignCenter)
         self.empty_state.setMinimumHeight(180)
         self.empty_state.hide()
-        self.grid.addWidget(self.empty_state, 0, 0, 1, 2)
         self.app_scroll = QScrollArea()
         self.app_scroll.setWidgetResizable(True)
         self.app_scroll.setFrameShape(QScrollArea.Shape.NoFrame)
@@ -176,30 +180,66 @@ class MainWindow(QMainWindow):
         self._update_startup_summary()
 
     def _populate_cards(self) -> None:
-        for index, app in enumerate(self.apps):
+        for app in self.apps:
             card = AppCard(app)
             card.open_clicked.connect(self.open_app)
             card.stop_clicked.connect(self.stop_app)
             card.restart_clicked.connect(self.restart_app)
             card.log_clicked.connect(self.view_log)
             self.cards[app.id] = card
-            self.grid.addWidget(card, index // 2, index % 2)
-        self.grid.setRowStretch(self.grid.rowCount(), 1)
+        self._relayout_cards(force=True)
 
     def apply_filters(self) -> None:
         query = self.search.text().strip().lower()
         category = self.category.currentText()
-        visible_count = 0
+        visible_ids = []
         for app in self.apps:
             haystack = f"{app.name} {app.description} {app.category}".lower()
             visible = (not query or query in haystack) and (
                 category == "All categories" or app.category == category
             )
-            self.cards[app.id].setVisible(visible)
-            visible_count += int(visible)
+            if visible:
+                visible_ids.append(app.id)
+        self._filtered_app_ids = visible_ids
+        visible_count = len(visible_ids)
         self.results_label.setText(self._application_count_text(visible_count))
-        self.empty_state.setVisible(visible_count == 0)
         self.open_all_button.setEnabled(visible_count > 0)
+        self._relayout_cards(force=True)
+
+    def _desired_column_count(self, width: int | None = None) -> int:
+        width = width or self.width()
+        if width >= 1540:
+            return 3
+        if width >= 820:
+            return 2
+        return 1
+
+    def _relayout_cards(self, force: bool = False, width: int | None = None) -> None:
+        if not hasattr(self, "app_scroll"):
+            return
+        columns = self._desired_column_count(width)
+        if not force and columns == self._column_count:
+            return
+        self._column_count = columns
+        for card in self.cards.values():
+            self.grid.removeWidget(card)
+            card.hide()
+        self.grid.removeWidget(self.empty_state)
+        for column in range(3):
+            self.grid.setColumnStretch(column, int(column < columns))
+        if not self._filtered_app_ids:
+            self.grid.addWidget(self.empty_state, 0, 0, 1, columns)
+            self.empty_state.show()
+            return
+        self.empty_state.hide()
+        for index, app_id in enumerate(self._filtered_app_ids):
+            card = self.cards[app_id]
+            self.grid.addWidget(card, index // columns, index % columns)
+            card.show()
+
+    def resizeEvent(self, event) -> None:
+        super().resizeEvent(event)
+        self._relayout_cards(width=event.size().width())
 
     @staticmethod
     def _application_count_text(count: int) -> str:
@@ -431,6 +471,10 @@ class MainWindow(QMainWindow):
         if queued:
             parts.append(f"{queued} queued")
         self.startup_summary.setText(" | ".join(parts))
+        summary_state = "busy" if self._active_startups or queued else "active" if running else "idle"
+        self.startup_summary.setProperty("state", summary_state)
+        self.startup_summary.style().unpolish(self.startup_summary)
+        self.startup_summary.style().polish(self.startup_summary)
         self.stop_all_button.setEnabled(bool(running or self._active_startups or queued))
 
     def _sync_process_liveness(self) -> None:

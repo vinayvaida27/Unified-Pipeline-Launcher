@@ -175,7 +175,7 @@ def test_qt_open_all_browser_restart_stop_and_cleanup(qt_app, config, tmp_path):
             assert process_manager.port_manager.is_available(restarted.port)
             browser.close()
     finally:
-        process_manager.stop_all()
+        window.stop_all_apps()
         assert window.thread_pool.waitForDone(5_000)
         window.close()
         window.deleteLater()
