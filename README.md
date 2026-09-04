@@ -1,65 +1,111 @@
 # Unified Pipeline Launcher
 
 Unified Pipeline Launcher is a Windows desktop application for starting,
-viewing, restarting, and stopping a collection of local Streamlit apps from one
-screen.
+viewing, restarting, and stopping local Streamlit applications from one screen.
 
-## Install
+## Requirements
 
-Requirements: Windows 10 or 11, Microsoft Edge, and internet access during the
-first installation. A separate Python installation is not required.
+- Windows 10 or 11
+- Microsoft Edge
+- Git or GitHub CLI
+- Internet access during the first installation and package updates
+- Write access to the installation folder
 
-1. Clone or download this repository.
-2. Double-click `INSTALL.bat`.
-3. Wait for the launcher window to open.
+A separate Python installation is not required.
 
-The installer downloads the private Python runtime, installs all declared
-packages, creates `START_LAUNCHER.lnk`, and starts the launcher. It deletes
-`INSTALL.bat` only after a successful installation; after a failure it keeps the
-file so the installation can be retried.
+## First-Time Installation
 
-## Use
+Choose either the mapped drive or UNC path available on the domain PC. For
+example, clone under the mapped `Z:\mycology` folder:
 
-- Double-click `START_LAUNCHER.lnk` or `START_LAUNCHER.vbs` for normal use.
-- Use `START_LAUNCHER_DEBUG.bat` only when troubleshooting startup errors.
-- Use `UPDATE_PACKAGES.bat` to update the bundled runtime and every recognized
-  virtual environment from the checked-in requirements files.
+```powershell
+Set-Location "Z:\mycology"
+gh repo clone vinayvaida27/Unified-Pipeline-Launcher
+Set-Location ".\Unified-Pipeline-Launcher"
+.\INSTALL.bat
+```
 
-To update an existing clone without rebuilding the application:
+Git can be used instead of GitHub CLI:
+
+```powershell
+git clone https://github.com/vinayvaida27/Unified-Pipeline-Launcher.git
+Set-Location ".\Unified-Pipeline-Launcher"
+.\INSTALL.bat
+```
+
+You can also open the cloned folder in File Explorer and double-click
+`INSTALL.bat`. The installer:
+
+1. Downloads a portable Python runtime.
+2. Installs the launcher and all registered app packages.
+3. Creates `START_LAUNCHER.lnk`.
+4. Starts the launcher.
+5. Deletes `INSTALL.bat` after a successful installation.
+
+If installation fails, `INSTALL.bat` is kept so it can be run again. On a
+shared network installation, one authorized user with write access performs the
+installation; other users launch the prepared application.
+
+## Daily Use
+
+- Double-click `START_LAUNCHER.lnk` for normal use.
+- Use `START_LAUNCHER.vbs` if the shortcut is unavailable.
+- Use `START_LAUNCHER_DEBUG.bat` to display startup errors.
+- Select **Open** for one app or **Open All** for all visible apps.
+- Closing the launcher stops apps that it started.
+
+The launcher opens apps in an isolated Microsoft Edge Guest window with browser
+extensions disabled. App servers bind only to `127.0.0.1`, use Streamlit's CORS
+and XSRF protections, and are stopped when the launcher exits. Startup also
+removes identity-matched processes left by an earlier crash.
+
+## Pull Updates
+
+Close the launcher and its apps before updating. Open PowerShell in the cloned
+repository and run:
 
 ```powershell
 git pull --ff-only origin main
 .\UPDATE_PACKAGES.bat
 ```
 
-The launcher opens apps in an isolated Microsoft Edge Guest window with browser
-extensions disabled. App servers bind only to `127.0.0.1`, use Streamlit's CORS
-and XSRF protections, and are stopped when the launcher exits. On startup, the
-launcher also removes identity-matched processes left by an earlier crash.
+`git pull` downloads launcher and app changes. `UPDATE_PACKAGES.bat` updates the
+portable runtime and every recognized virtual environment from the checked-in
+requirements files. Start the launcher again after both commands finish.
 
-### Domain And Network Drives
+Do not make app changes only on the domain PC. Make them in a development
+clone, commit and push them, and then pull them onto the domain PC.
 
-The repository can be installed from either a mapped path such as
-`Z:\mycology\Unified-Pipeline-Launcher` or its UNC equivalent. During
-installation, the generated shortcut uses the stable UNC location when Windows
-exposes one, so a changed drive letter does not break it. Python and app code
-are cached under `%LOCALAPPDATA%\OrganizationName\UnifiedPipelineLauncher` for
-normal launches; the network share remains the source of truth.
+## Domain And Network Drives
 
-Use the mapped or UNC path available on that PC. Do not hardcode `Z:` inside an
-app because domain mappings can differ between users.
+The repository works from a mapped path such as
+`Z:\mycology\Unified-Pipeline-Launcher` or the equivalent UNC path. During
+installation, the generated shortcut records the stable UNC location exposed
+by Windows, so a different drive letter does not invalidate the shortcut or
+runtime cache.
+
+Python and app code are cached under
+`%LOCALAPPDATA%\OrganizationName\UnifiedPipelineLauncher` for normal launches;
+the network repository remains the source of truth. Do not hardcode `Z:` inside
+an app because domain mappings can differ between users. Use a UNC path or an
+environment-specific configuration value for shared data.
 
 ## Add An App
 
-Application files live in `apps`. Copy the template:
+Application folders live directly under `apps`. Copy the included template:
 
 ```powershell
 Copy-Item -Recurse .\apps\app_template .\apps\my_app
 ```
 
-Edit `apps/my_app/app.py`, list every dependency in
-`apps/my_app/requirements.txt`, and provide an icon at
-`apps/my_app/assets/icon.svg`. Then add the app to `apps/apps.json`:
+Update these files:
+
+- `apps/my_app/app.py`: the Streamlit entry point
+- `apps/my_app/requirements.txt`: all Python dependencies
+- `apps/my_app/assets/icon.svg`: the launcher icon
+- `apps/apps.json`: the application registry
+
+Add an entry to the `applications` array in `apps/apps.json`:
 
 ```json
 {
@@ -75,24 +121,25 @@ Edit `apps/my_app/app.py`, list every dependency in
 }
 ```
 
-Restart the launcher after changing the registry. Bump `version` whenever an
-app's dependencies or behavior changes.
-
-To add or change a dependency and refresh the runtime in one command:
+Bump `version` whenever the app's dependencies or behavior changes. To add a
+dependency and refresh the runtime:
 
 ```powershell
 .\src\scripts\update_dependencies.ps1 -Target app -AppId my-app -Package "plotly>=5,<6"
 ```
 
+Commit and push the app folder and `apps/apps.json`. On the domain PC, use the
+commands in **Pull Updates**, then restart the launcher.
+
 ## Project Structure
 
 ```text
 Unified-Pipeline-Launcher/
-|-- INSTALL.bat                 Temporary one-time installer
-|-- START_LAUNCHER.vbs          Normal no-console launcher
+|-- apps/                       App registry and Streamlit apps
+|-- INSTALL.bat                 Temporary first-time installer
+|-- START_LAUNCHER.vbs          Normal no-console fallback
 |-- START_LAUNCHER_DEBUG.bat    Troubleshooting launcher
 |-- UPDATE_PACKAGES.bat         Python environment updater
-|-- apps/                       App registry and Streamlit apps
 |-- README.md
 |-- LICENSE
 `-- src/
