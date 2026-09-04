@@ -163,22 +163,22 @@ QPushButton:disabled {
     border: 1px solid #252529;
 }
 QPushButton#primary {
-    background: #f4f4f5;
-    color: #111113;
-    border: 1px solid #f4f4f5;
+    background: #357df3;
+    color: #ffffff;
+    border: 1px solid #357df3;
 }
 QPushButton#primary:hover {
-    background: #ffffff;
-    border: 1px solid #ffffff;
+    background: #468bf7;
+    border: 1px solid #468bf7;
 }
 QPushButton#primary:pressed {
-    background: #d9d9dc;
-    border: 1px solid #d9d9dc;
+    background: #2868d4;
+    border: 1px solid #2868d4;
 }
 QPushButton#primary:disabled {
-    background: #29292d;
-    color: #626269;
-    border: 1px solid #29292d;
+    background: #1d3154;
+    color: #657797;
+    border: 1px solid #253c63;
 }
 QPushButton#danger {
     background: transparent;

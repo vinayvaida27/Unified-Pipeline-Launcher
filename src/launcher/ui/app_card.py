@@ -10,11 +10,11 @@ from PySide6.QtWidgets import (
     QLabel,
     QPushButton,
     QSizePolicy,
-    QStyle,
     QVBoxLayout,
 )
 
 from ..models import ApplicationManifest, ApplicationStatus
+from .icons import ui_icon
 
 
 class AppCard(QFrame):
@@ -72,10 +72,10 @@ class AppCard(QFrame):
         self.stop_button.setObjectName("toolDanger")
         self.restart_button.setObjectName("tool")
         self.log_button.setObjectName("quiet")
-        self.open_button.setIcon(self.style().standardIcon(QStyle.StandardPixmap.SP_MediaPlay))
-        self.stop_button.setIcon(self.style().standardIcon(QStyle.StandardPixmap.SP_MediaStop))
-        self.restart_button.setIcon(self.style().standardIcon(QStyle.StandardPixmap.SP_BrowserReload))
-        self.log_button.setIcon(self.style().standardIcon(QStyle.StandardPixmap.SP_FileDialogContentsView))
+        self.open_button.setIcon(ui_icon("play", "#ffffff"))
+        self.stop_button.setIcon(ui_icon("square", "#ff8f8a"))
+        self.restart_button.setIcon(ui_icon("rotate-cw", "#b8b8c0"))
+        self.log_button.setIcon(ui_icon("file-text", "#a8a8b0"))
         for button in (self.stop_button, self.restart_button):
             button.setFixedSize(34, 34)
             button.setIconSize(QSize(16, 16))
@@ -147,13 +147,7 @@ class AppCard(QFrame):
         starting = status == ApplicationStatus.STARTING
         running = status == ApplicationStatus.RUNNING
         self.open_button.setText("View" if running else "Open")
-        self.open_button.setIcon(
-            self.style().standardIcon(
-                QStyle.StandardPixmap.SP_DialogOpenButton
-                if running
-                else QStyle.StandardPixmap.SP_MediaPlay
-            )
-        )
+        self.open_button.setIcon(ui_icon("external-link" if running else "play", "#ffffff"))
         self.open_button.setEnabled(not starting)
         self.stop_button.setVisible(running or starting)
         self.stop_button.setEnabled(running or starting)

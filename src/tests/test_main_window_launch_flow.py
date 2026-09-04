@@ -347,6 +347,30 @@ def test_card_hides_actions_that_are_not_available(qt_app, config, repo_root):
     window.close()
 
 
+def test_launcher_controls_use_packaged_vector_icons(qt_app, config, repo_root):
+    app = _app(repo_root)
+    window = _window(qt_app, config, app, FakeProcessManager())
+    card = window.cards[app.id]
+
+    controls = (
+        window.applications_nav,
+        window.settings_nav,
+        window.about_nav,
+        window.open_all_button,
+        window.stop_all_button,
+        card.log_button,
+        card.stop_button,
+        card.restart_button,
+        card.open_button,
+    )
+
+    assert all(not control.icon().isNull() for control in controls)
+    card.set_status(ApplicationStatus.RUNNING)
+    assert card.open_button.text() == "View"
+    assert not card.open_button.icon().isNull()
+    window.close()
+
+
 def test_duplicate_start_worker_is_prevented(qt_app, config, repo_root, tmp_path, monkeypatch):
     app = _app(repo_root)
     window = _window(qt_app, config, app, FakeProcessManager())

@@ -22,7 +22,6 @@ from PySide6.QtWidgets import (
     QMessageBox,
     QPushButton,
     QScrollArea,
-    QStyle,
     QVBoxLayout,
     QWidget,
 )
@@ -34,6 +33,7 @@ from ..process_manager import ProcessManager
 from ..secure_browser import open_isolated_browser
 from .about_dialog import show_about
 from .app_card import AppCard
+from .icons import ui_icon
 from .log_dialog import LogDialog
 from .settings_dialog import SettingsDialog
 from .styles import APP_STYLE
@@ -125,13 +125,13 @@ class MainWindow(QMainWindow):
         self.about_nav = QPushButton("About")
         self.about_nav.setObjectName("navButton")
         nav_items = (
-            (self.applications_nav, QStyle.StandardPixmap.SP_ComputerIcon),
-            (self.settings_nav, QStyle.StandardPixmap.SP_FileDialogDetailedView),
-            (self.about_nav, QStyle.StandardPixmap.SP_MessageBoxInformation),
+            (self.applications_nav, "layout-grid", "#69a7ff"),
+            (self.settings_nav, "settings", "#a7a7af"),
+            (self.about_nav, "info", "#a7a7af"),
         )
-        for button, icon in nav_items:
-            button.setIcon(self.style().standardIcon(icon))
-            button.setIconSize(QSize(16, 16))
+        for button, icon_name, icon_color in nav_items:
+            button.setIcon(ui_icon(icon_name, icon_color))
+            button.setIconSize(QSize(17, 17))
             button.setFixedHeight(38)
             button.setCursor(Qt.CursorShape.PointingHandCursor)
             sidebar_layout.addWidget(button)
@@ -182,8 +182,8 @@ class MainWindow(QMainWindow):
         self.stop_all_button = QPushButton("Stop All")
         self.open_all_button.setObjectName("primary")
         self.stop_all_button.setObjectName("danger")
-        self.open_all_button.setIcon(self.style().standardIcon(QStyle.StandardPixmap.SP_MediaPlay))
-        self.stop_all_button.setIcon(self.style().standardIcon(QStyle.StandardPixmap.SP_MediaStop))
+        self.open_all_button.setIcon(ui_icon("play", "#ffffff"))
+        self.stop_all_button.setIcon(ui_icon("square", "#ff8f8a"))
         self.open_all_button.setIconSize(QSize(15, 15))
         self.stop_all_button.setIconSize(QSize(15, 15))
         self.open_all_button.setFixedSize(98, 38)
@@ -211,8 +211,15 @@ class MainWindow(QMainWindow):
         self.search.setFixedHeight(40)
         self.search.setClearButtonEnabled(True)
         self.search.setAccessibleName("Search applications")
+        self.search.addAction(
+            ui_icon("search", "#74747d"),
+            QLineEdit.ActionPosition.LeadingPosition,
+        )
         self.category = QComboBox()
-        self.category.addItems(["All categories"] + sorted({app.category for app in self.apps}))
+        self.category.setIconSize(QSize(16, 16))
+        self.category.addItem(ui_icon("list-filter", "#85858e"), "All categories")
+        for category in sorted({app.category for app in self.apps}):
+            self.category.addItem(ui_icon("tag", "#85858e"), category)
         self.category.setFixedSize(180, 40)
         self.category.setAccessibleName("Application category")
         toolbar.addWidget(self.search, 1)
