@@ -46,7 +46,7 @@ Invoke-GateStep "public metadata" {
     foreach ($Path in @("pyproject.toml", "uv.lock", "requirements-launcher.txt", "scripts\ensure_uv.ps1", "scripts\create_launcher_shortcut.ps1")) {
         if (-not (Test-Path (Join-Path $Root $Path))) { throw "Missing public metadata file: $Path" }
     }
-    foreach ($Path in @("README.md", "LICENSE", "INSTALL.bat", "UPDATE_PACKAGES.bat", "START_LAUNCHER.bat", "START_LAUNCHER.vbs", "START_LAUNCHER_DEBUG.bat", "apps\apps.json")) {
+    foreach ($Path in @("README.md", "LICENSE", "UPDATE_PACKAGES.bat", "START_LAUNCHER.bat", "START_LAUNCHER.vbs", "START_LAUNCHER_DEBUG.bat", "apps\apps.json")) {
         if (-not (Test-Path (Join-Path $PublicRoot $Path))) { throw "Missing public root file: $Path" }
     }
 }
@@ -56,8 +56,10 @@ Invoke-GateStep "startup entrypoints" {
     $DebugBat = Get-Content (Join-Path $PublicRoot "START_LAUNCHER_DEBUG.bat") -Raw
     $Vbs = Get-Content (Join-Path $PublicRoot "START_LAUNCHER.vbs") -Raw
     foreach ($Text in @($NormalBat, $DebugBat, $Vbs)) {
-        if ($Text -notmatch "-I\s+-m\s+launcher") { throw "Launcher entrypoints must use isolated module startup (-I -m launcher)." }
+        if ($Text -notmatch "-m\s+launcher") { throw "Launcher entrypoints must start the launcher package with -m launcher." }
+        if ($Text -match "-I\s+-m\s+launcher") { throw "Launcher module startup must not use -I because launcher lives in the source directory." }
         if ($Text -notmatch "--no-local-cache") { throw "Launcher entrypoints must explicitly bypass expensive startup caching." }
+        if ($Text -notmatch "import launcher") { throw "Launcher entrypoints must validate that the source package is importable." }
     }
     if ($DebugBat -notmatch "import encodings") { throw "Debug startup must validate the bundled runtime." }
 }
@@ -74,10 +76,13 @@ Invoke-GateStep "application SVG icons" {
 Invoke-GateStep "dependency workflow" {
     $UpdateScript = Get-Content (Join-Path $Root "scripts\update_dependencies.ps1") -Raw
     $PrepareScript = Get-Content (Join-Path $Root "scripts\prepare_shared_runtime.ps1") -Raw
+    $CommonScript = Get-Content (Join-Path $Root "scripts\common.ps1") -Raw
     if ($UpdateScript -notmatch "prepare_shared_runtime\.ps1") { throw "update_dependencies.ps1 must call prepare_shared_runtime.ps1" }
     if ($PrepareScript -notmatch "from PySide6\.QtWidgets import QApplication; import streamlit") { throw "prepare_shared_runtime.ps1 must validate PySide6 and streamlit" }
     if ($PrepareScript -notmatch "--link-mode=copy") { throw "prepare_shared_runtime.ps1 must use uv copy mode for cross-filesystem network installs" }
     if ($PrepareScript -notmatch "missing RECORD") { throw "prepare_shared_runtime.ps1 must detect damaged package metadata" }
+    if ($PrepareScript -match "\[IO\.Path\]::GetRelativePath") { throw "prepare_shared_runtime.ps1 must remain compatible with Windows PowerShell 5.1" }
+    if ($CommonScript -notmatch "Get-LauncherRelativePath") { throw "common.ps1 must provide the Windows PowerShell compatible relative-path helper" }
 }
 
 if ($FullBuild) {
