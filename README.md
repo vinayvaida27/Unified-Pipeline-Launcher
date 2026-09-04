@@ -45,10 +45,19 @@ If installation fails, `INSTALL.bat` is kept so it can be run again.
 ## Daily Use
 
 - Double-click `START_LAUNCHER.lnk` for normal use.
-- Use `START_LAUNCHER.vbs` if the shortcut is unavailable.
-- Use `START_LAUNCHER_DEBUG.bat` to display startup errors.
+- Use `START_LAUNCHER.vbs` for a silent no-console launch.
+- Use `START_LAUNCHER.bat` for a normal command-line launch.
+- Use `START_LAUNCHER_DEBUG.bat` to display runtime/startup errors.
 - Select **Open** for one app or **Open All** for all visible apps.
 - Closing the launcher stops apps that it started.
+
+All three launcher entry points resolve paths from their own installation folder,
+clear inherited Python/Conda environment variables, use the bundled runtime, and
+launch the module with isolated Python startup (`-I -m launcher`). Normal network
+launches execute directly from the verified bundled runtime; they do not copy the
+entire runtime or all application folders into `%LOCALAPPDATA%` before showing the
+launcher window. Local caching remains available only when explicitly enabled in
+configuration.
 
 The launcher opens apps in an isolated Microsoft Edge Guest window with browser
 extensions disabled. App servers bind only to `127.0.0.1`, use Streamlit's CORS
@@ -63,17 +72,18 @@ Close the launcher and its apps before updating. Open PowerShell in the cloned
 repository and run:
 
 ```powershell
-git pull --ff-only origin main
+git pull --ff-only
 .\UPDATE_PACKAGES.bat
 ```
 
-`git pull` downloads launcher and app changes. `UPDATE_PACKAGES.bat` bootstraps
-the project's pinned `uv` tool when needed, updates the portable runtime and any
-recognized virtual environments, then validates them. Start the launcher again
-after both commands finish.
+`git pull` updates the currently checked-out branch without hard-coding `main`.
+`UPDATE_PACKAGES.bat` bootstraps the project's pinned `uv` tool when needed,
+updates the portable runtime and any recognized virtual environments, then
+validates them. The shared-runtime installer uses `uv --link-mode=copy` when the
+runtime is on a mapped/UNC filesystem and rebuilds a damaged runtime when package
+metadata such as `*.dist-info/RECORD` is missing.
 
-Make app changes in a development clone, commit and push them, and then pull
-them into other installations.
+Start the launcher again after both commands finish.
 
 ## Add An App
 
@@ -116,13 +126,18 @@ dependency and refresh the runtime:
 Commit and push the app folder and `apps/apps.json`. In other installations,
 use the commands in **Pull Updates**, then restart the launcher.
 
+Application SVG icons are validated by the public quality gate. If a local or
+untracked SVG is malformed, the desktop UI falls back to the application's first
+letter instead of repeatedly rendering invalid SVG path data.
+
 ## Project Structure
 
 ```text
 Unified-Pipeline-Launcher/
 |-- apps/                       App registry and Streamlit apps
 |-- INSTALL.bat                 Temporary first-time installer
-|-- START_LAUNCHER.vbs          Normal no-console fallback
+|-- START_LAUNCHER.vbs          Normal no-console launcher
+|-- START_LAUNCHER.bat          Normal command-line launcher
 |-- START_LAUNCHER_DEBUG.bat    Troubleshooting launcher
 |-- UPDATE_PACKAGES.bat         Python environment updater
 |-- README.md
