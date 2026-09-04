@@ -13,7 +13,7 @@ if not exist "%PYTHON%" (
     echo ERROR: Bundled Python runtime not found:
     echo   %PYTHON%
     echo.
-    echo Run INSTALL.bat or src\scripts\deploy_network.ps1 first.
+    echo Run src\scripts\deploy_network.ps1 first.
     echo.
     pause
     exit /b 1
@@ -55,9 +55,19 @@ if errorlevel 1 (
     exit /b 1
 )
 
+"%PYTHON%" -c "import launcher; print('Launcher module validation: OK')"
+if errorlevel 1 (
+    echo.
+    echo ERROR: Launcher source package could not be imported from:
+    echo   %SRC%
+    popd
+    pause
+    exit /b 1
+)
+
 echo Starting launcher...
 echo.
-"%PYTHON%" -I -m launcher --config "%CONFIG%" --no-local-cache
+"%PYTHON%" -m launcher --config "%CONFIG%" --no-local-cache
 set "EXITCODE=%ERRORLEVEL%"
 
 popd
