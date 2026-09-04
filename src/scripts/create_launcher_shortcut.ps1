@@ -22,7 +22,7 @@ param(
 )
 
 $ErrorActionPreference = "Stop"
-$ReleaseDir = $ReleaseDir.Trim().Trim([char]34)
+. (Join-Path $PSScriptRoot "common.ps1")
 
 function ConvertTo-StableNetworkPath {
     param([Parameter(Mandatory=$true)][string]$Path)
@@ -46,7 +46,7 @@ function ConvertTo-StableNetworkPath {
 if ($ReleaseDir -eq "") {
     $ReleaseDir = Split-Path -Parent (Split-Path -Parent $PSScriptRoot)
 }
-$Root = ConvertTo-StableNetworkPath (Resolve-Path -LiteralPath $ReleaseDir -ErrorAction Stop).Path
+$Root = ConvertTo-StableNetworkPath (Resolve-LauncherPath $ReleaseDir)
 $SourceRoot = Join-Path $Root "src"
 if (-not (Test-Path -LiteralPath $SourceRoot)) {
     $SourceRoot = $Root

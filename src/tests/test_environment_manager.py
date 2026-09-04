@@ -1,10 +1,14 @@
 from __future__ import annotations
 
 import json
+import sys
 from dataclasses import replace
+
+import pytest
 
 from launcher.app_discovery import discover_apps
 from launcher.environment_manager import EnvironmentManager, RuntimeResolver
+from launcher.exceptions import DependencyInstallationError
 from launcher.models import RuntimeConfig
 
 
@@ -60,23 +64,49 @@ def test_detects_changed_requirements_hash(temp_config, repo_root):
     assert not manager.is_ready(app)
 
 
-def test_builds_correct_pip_command(temp_config, repo_root):
+def test_builds_correct_uv_command(temp_config, repo_root, monkeypatch):
     app = discover_apps(repo_root / "apps")[0]
     manager = EnvironmentManager(temp_config, repo_root / "fake-python.exe")
-    command = manager.pip_install_command(app, repo_root / ".venv" / "Scripts" / "python.exe")
-    assert command[:4][-3:] == ["-m", "pip", "install"]
+    monkeypatch.setattr(manager, "uv_executable", lambda: repo_root / "tools" / "uv.exe")
+    venv_python = repo_root / ".venv" / "Scripts" / "python.exe"
+    command = manager.uv_install_command(app, venv_python)
+    assert command[:6] == [str(repo_root / "tools" / "uv.exe"), "pip", "install", "--python", str(venv_python), "--no-config"]
     assert "-r" in command
 
 
-def test_chooses_offline_wheelhouse_when_available(temp_config, copied_apps):
+def test_chooses_offline_wheelhouse_when_available(temp_config, copied_apps, monkeypatch):
     wheelhouse = copied_apps / "01_hello_pipeline" / "wheelhouse"
     wheelhouse.mkdir()
     (wheelhouse / "placeholder.whl").write_text("", encoding="utf-8")
     app = discover_apps(copied_apps)[0]
     manager = EnvironmentManager(temp_config, copied_apps / "fake-python.exe")
-    command = manager.pip_install_command(app, copied_apps / "venv-python.exe")
+    monkeypatch.setattr(manager, "uv_executable", lambda: copied_apps / "uv.exe")
+    command = manager.uv_install_command(app, copied_apps / "venv-python.exe")
     assert "--no-index" in command
     assert "--find-links" in command
+
+
+def test_optional_environment_mode_fails_clearly_without_uv(temp_config, repo_root, monkeypatch):
+    manager = EnvironmentManager(temp_config, repo_root / "fake-python.exe")
+    monkeypatch.setattr("launcher.environment_manager.shutil.which", lambda _name: None)
+
+    with pytest.raises(DependencyInstallationError, match="uv is required"):
+        manager.uv_executable()
+
+
+def test_uv_install_failure_uses_dependency_exception(temp_config, repo_root, tmp_path):
+    manager = EnvironmentManager(temp_config, repo_root / "fake-python.exe")
+    log_path = tmp_path / "install.log"
+
+    with log_path.open("w", encoding="utf-8") as log_handle:
+        with pytest.raises(DependencyInstallationError, match="exit code 7"):
+            manager._run_logged(
+                [sys.executable, "-c", "raise SystemExit(7)"],
+                log_handle,
+                10,
+                "Dependency installation failed",
+                DependencyInstallationError,
+            )
 
 
 def test_runtime_resolver_can_skip_validation_before_local_sync(temp_config, tmp_path, monkeypatch):
@@ -143,8 +173,8 @@ def test_ensure_environment_runs_full_flow(temp_config, repo_root, monkeypatch):
 
     assert state.ready is True
     assert state.app_id == app.id
-    # venv creation + pip install + streamlit validation all ran.
-    assert calls == ["-m", "-m", "-c"]
+    # venv creation + uv install + streamlit validation all ran.
+    assert calls == ["-m", "pip", "-c"]
     assert "Creating virtual environment" in progress_messages
     assert "Installing dependencies" in progress_messages
     # A complete marker was written.

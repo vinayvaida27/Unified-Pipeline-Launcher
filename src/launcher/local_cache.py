@@ -6,12 +6,14 @@ import hashlib
 import os
 import shutil
 import stat
+import subprocess
 import time
 from dataclasses import replace
 from datetime import datetime, timezone
 from pathlib import Path
 
 from .constants import STATE_SCHEMA_VERSION
+from .exceptions import RuntimeValidationError
 from .models import ApplicationManifest
 from .path_utils import atomic_write_json, read_json
 
@@ -55,6 +57,8 @@ class LocalCacheManager:
         source_runtime_dir = runtime_python.parent
         try:
             runtime_python.relative_to(self.runtime_dir.resolve())
+            if not self._runtime_is_self_contained(runtime_python):
+                raise RuntimeValidationError(f"Cached Python runtime is not self-contained: {runtime_python}")
             return runtime_python
         except ValueError:
             pass
@@ -63,13 +67,21 @@ class LocalCacheManager:
         cached_runtime_dir = self.runtime_dir / "current"
         cached_python = cached_runtime_dir / runtime_python.name
         marker_path = cached_runtime_dir / ".runtime_cache_ready.json"
-        if not cached_python.exists() or not self._cache_marker_matches(marker_path, fingerprint):
+        cache_is_current = (
+            cached_python.exists()
+            and self._cache_marker_matches(marker_path, fingerprint)
+            and self._runtime_is_self_contained(cached_python)
+        )
+        if not cache_is_current:
             cached_runtime_dir.parent.mkdir(parents=True, exist_ok=True)
             temp_dir = cached_runtime_dir.parent / ".current.staging"
             self._force_rmtree(temp_dir)
             shutil.copytree(source_runtime_dir, temp_dir, ignore=self._copy_ignore)
             self._force_rmtree(cached_runtime_dir)
             self._safe_replace(temp_dir, cached_runtime_dir)
+            if not self._runtime_is_self_contained(cached_python):
+                self._force_rmtree(cached_runtime_dir)
+                raise RuntimeValidationError(f"Copied Python runtime is not self-contained: {cached_python}")
             atomic_write_json(
                 marker_path,
                 {
@@ -81,6 +93,33 @@ class LocalCacheManager:
             )
             self.runtime_cache_refreshed = True
         return cached_python.resolve()
+
+    @staticmethod
+    def _runtime_is_self_contained(python_path: Path) -> bool:
+        probe = (
+            "import encodings, os, sys; "
+            "root=os.path.normcase(os.path.realpath(os.path.dirname(sys.executable))); "
+            "paths=(sys.prefix, sys.base_prefix, encodings.__file__); "
+            "raise SystemExit(0 if all(os.path.commonpath((root, os.path.normcase(os.path.realpath(path)))) "
+            "== root for path in paths) else 86)"
+        )
+        env = os.environ.copy()
+        for variable in ("PYTHONPATH", "PYTHONHOME", "PYTHONSTARTUP", "PYTHONUSERBASE"):
+            env.pop(variable, None)
+        env["PYTHONNOUSERSITE"] = "1"
+        try:
+            result = subprocess.run(
+                [str(python_path), "-I", "-c", probe],
+                stdin=subprocess.DEVNULL,
+                stdout=subprocess.DEVNULL,
+                stderr=subprocess.DEVNULL,
+                env=env,
+                timeout=20,
+                check=False,
+            )
+        except (OSError, subprocess.TimeoutExpired):
+            return False
+        return result.returncode == 0
 
     def sync_apps_to_local_cache(self, apps: list[ApplicationManifest]) -> list[ApplicationManifest]:
         """Copy app source folders into the per-user local cache.

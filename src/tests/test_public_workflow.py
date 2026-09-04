@@ -5,6 +5,10 @@ def test_update_dependencies_refreshes_shared_runtime(source_root):
     script = (source_root / "scripts" / "update_dependencies.ps1").read_text(encoding="utf-8")
 
     assert "requirements-launcher.txt" in script
+    assert "pyproject.toml" in script
+    assert "$Uv lock" in script
+    assert "$Uv add" in script
+    assert "$Uv export" in script
     assert 'Join-Path $ReleaseDir "apps"' in script
     assert 'Join-Path $AppsRoot "apps.json"' in script
     assert "prepare_shared_runtime.ps1" in script
@@ -27,7 +31,11 @@ def test_ci_runs_supported_windows_python_versions(source_root):
     assert "windows-latest" in workflow
     assert '"3.11"' in workflow
     assert '"3.12"' in workflow
-    assert "requirements-dev.txt" in workflow
+    assert "astral-sh/setup-uv@" in workflow
+    assert "uv lock --project src --check" in workflow
+    assert "uv sync --project src --locked" in workflow
+    assert "uv run --project src --locked" in workflow
+    assert "pytest src/tests" in workflow
     assert "public_quality_gate.ps1" in workflow
 
 
@@ -50,4 +58,24 @@ def test_only_approved_root_markdown_is_tracked(repo_root):
         text=True,
     )
 
-    assert set(result.stdout.splitlines()) <= {"README.md", "TEST_AUDIT.md"}
+    assert set(result.stdout.splitlines()) <= {"AGENTS.md", "README.md", "TEST_AUDIT.md"}
+
+
+def test_uv_dependency_files_are_canonical_and_locked(source_root):
+    pyproject = (source_root / "pyproject.toml").read_text(encoding="utf-8")
+    lock = (source_root / "uv.lock").read_text(encoding="utf-8")
+    bootstrap = (source_root / "scripts" / "ensure_uv.ps1").read_text(encoding="utf-8")
+
+    assert "[dependency-groups]" in pyproject
+    assert '[tool.uv]' in pyproject
+    assert 'required-version = "==0.11.14"' in pyproject
+    assert 'name = "unified-pipeline-launcher"' in lock
+    assert '$UvVersion = "0.11.14"' in bootstrap
+    assert "Get-FileHash" in bootstrap
+
+
+def test_process_manager_launch_path_does_not_invoke_uv(source_root):
+    process_manager = (source_root / "launcher" / "process_manager.py").read_text(encoding="utf-8")
+
+    assert '"-m",\n            "streamlit",\n            "run"' in process_manager
+    assert '"uv"' not in process_manager

@@ -3,10 +3,9 @@
     Add or update Python dependencies, then refresh the bundled runtime.
 
 .DESCRIPTION
-    This is the public maintainer path for dependency changes. Requirements
-    files are the source of truth; this script updates them when requested,
-    installs launcher plus app dependencies into runtime\, and validates the
-    imports needed to start the desktop launcher and Streamlit apps.
+    Launcher dependencies are updated in pyproject.toml and uv.lock. App
+    dependencies remain in each app's requirements.txt. The shared runtime is
+    then resolved, installed, and validated with uv.
 
 .EXAMPLE
     .\src\scripts\update_dependencies.ps1
@@ -32,13 +31,14 @@ param(
 )
 
 $ErrorActionPreference = "Stop"
+. (Join-Path $PSScriptRoot "common.ps1")
+Clear-LauncherPythonEnvironment
 $SourceRoot = Split-Path -Parent $PSScriptRoot
 $PublicRoot = Split-Path -Parent $SourceRoot
-$ReleaseDir = $ReleaseDir.Trim().Trim([char]34)
 if ($ReleaseDir -eq "") {
     $ReleaseDir = $PublicRoot
 }
-$ReleaseDir = (Resolve-Path -LiteralPath $ReleaseDir -ErrorAction Stop).Path
+$ReleaseDir = Resolve-LauncherPath $ReleaseDir
 $ReleaseSourceRoot = Join-Path $ReleaseDir "src"
 if (-not (Test-Path -LiteralPath $ReleaseSourceRoot)) {
     $ReleaseSourceRoot = $ReleaseDir
@@ -121,15 +121,35 @@ function Get-AppRequirementFile {
     return Join-Path $AppsRoot "$($App.folder)\requirements.txt"
 }
 
-    if ($Package -ne "") {
-    if ($Target -eq "launcher") {
-        $RequirementFile = Join-Path $ReleaseSourceRoot "requirements-launcher.txt"
-    } else {
-        $RequirementFile = Get-AppRequirementFile $AppId
+if ($Target -eq "launcher") {
+    $ProjectFile = Join-Path $ReleaseSourceRoot "pyproject.toml"
+    if (-not (Test-Path -LiteralPath $ProjectFile)) {
+        throw "Launcher project metadata not found: $ProjectFile"
     }
+    $Uv = & (Join-Path $PSScriptRoot "ensure_uv.ps1")
+    if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+    $ProjectArgument = if ($ReleaseSourceRoot -eq $ReleaseDir) { "." } else { "src" }
+    $RequirementArgument = Join-Path $ProjectArgument "requirements-launcher.txt"
+    Push-Location -LiteralPath $ReleaseDir
+    try {
+        if ($Package -ne "") {
+            & $Uv add --project $ProjectArgument --no-sync $Package
+        } else {
+            Write-Host "No package supplied. Refreshing the launcher lock and compatibility requirements."
+            & $Uv lock --project $ProjectArgument
+        }
+        if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+        & $Uv export --project $ProjectArgument --locked --no-dev --no-emit-project --no-hashes --output-file $RequirementArgument
+        if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+    } finally {
+        Pop-Location
+    }
+    Write-Host "Updated launcher dependencies: $ProjectFile"
+} elseif ($Package -ne "") {
+    $RequirementFile = Get-AppRequirementFile $AppId
     Update-RequirementFile -Path $RequirementFile -Spec $Package
 } else {
-    Write-Host "No package supplied. Reinstalling and validating existing requirements."
+    Write-Host "No package supplied. Reinstalling and validating existing app requirements."
 }
 
 $Python = Join-Path $ReleaseSourceRoot "runtime\python.exe"

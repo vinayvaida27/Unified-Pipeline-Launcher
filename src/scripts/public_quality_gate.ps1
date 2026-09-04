@@ -54,7 +54,7 @@ Invoke-GateStep "compile Python sources" {
 }
 
 Invoke-GateStep "public metadata" {
-    foreach ($Path in @("requirements-launcher.txt", "scripts\create_launcher_shortcut.ps1")) {
+    foreach ($Path in @("pyproject.toml", "uv.lock", "requirements-launcher.txt", "scripts\ensure_uv.ps1", "scripts\create_launcher_shortcut.ps1")) {
         if (-not (Test-Path (Join-Path $Root $Path))) {
             throw "Missing public metadata file: $Path"
         }
@@ -74,6 +74,9 @@ Invoke-GateStep "dependency workflow" {
     }
     if ($PrepareScript -notmatch "from PySide6\.QtWidgets import QApplication; import streamlit") {
         throw "prepare_shared_runtime.ps1 must validate PySide6 and streamlit"
+    }
+    if ($PrepareScript -notmatch "uv.*pip.*install.*--python") {
+        throw "prepare_shared_runtime.ps1 must install through uv into the bundled Python"
     }
 }
 

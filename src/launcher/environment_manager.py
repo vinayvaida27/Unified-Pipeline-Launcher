@@ -5,6 +5,7 @@ from __future__ import annotations
 import hashlib
 import json
 import os
+import shutil
 import subprocess
 import sys
 from datetime import datetime, timezone
@@ -42,8 +43,14 @@ class RuntimeResolver:
 
         if not python_path.exists():
             raise RuntimeNotFoundError(str(python_path))
-        script = "import ssl, subprocess, venv, pip, sys; print(f'{sys.version_info.major}.{sys.version_info.minor}.{sys.version_info.micro}')"
-        result = subprocess.run([str(python_path), "-c", script], capture_output=True, text=True, timeout=20)
+        script = "import encodings, ssl, subprocess, venv, pip, sys; print(f'{sys.version_info.major}.{sys.version_info.minor}.{sys.version_info.micro}')"
+        result = subprocess.run(
+            [str(python_path), "-I", "-c", script],
+            capture_output=True,
+            text=True,
+            timeout=20,
+            env=scrubbed_environment(),
+        )
         if result.returncode != 0:
             raise RuntimeValidationError(result.stderr.strip() or "Runtime validation failed")
         major, minor, *_ = result.stdout.strip().split(".")
@@ -65,7 +72,7 @@ class EnvironmentManager:
     """Creates and validates per-app/per-version virtual environments."""
 
     VENV_TIMEOUT_SECONDS = 300
-    PIP_TIMEOUT_SECONDS = 1800
+    INSTALL_TIMEOUT_SECONDS = 1800
 
     def __init__(self, config: PlatformConfig, runtime_python: Path) -> None:
         self.config = config
@@ -118,9 +125,30 @@ class EnvironmentManager:
             and data.get("runtime_fingerprint") == self.runtime_fingerprint()
         )
 
-    def pip_install_command(self, app: ApplicationManifest, venv_python: Path) -> list[str]:
+    def uv_executable(self) -> Path:
+        """Return the controlled uv executable used only for environment setup."""
+
+        controlled = self.config.paths.local_cache_directory / "tools" / "uv" / "uv.exe"
+        if controlled.is_file():
+            return controlled
+        discovered = shutil.which("uv")
+        if discovered:
+            return Path(discovered)
+        raise DependencyInstallationError(
+            "uv is required to create per-app environments. Run INSTALL.bat or src/scripts/setup_dev.ps1 first."
+        )
+
+    def uv_install_command(self, app: ApplicationManifest, venv_python: Path) -> list[str]:
         """Build the dependency installation command."""
-        command = [str(venv_python), "-m", "pip", "install"]
+
+        command = [
+            str(self.uv_executable()),
+            "pip",
+            "install",
+            "--python",
+            str(venv_python),
+            "--no-config",
+        ]
         if self.config.runtime.offline_install_preferred and app.wheelhouse.exists() and any(app.wheelhouse.iterdir()):
             command.extend(["--no-index", "--find-links", str(app.wheelhouse)])
         command.extend(["-r", str(app.requirements)])
@@ -197,9 +225,9 @@ class EnvironmentManager:
             if progress:
                 progress("Installing dependencies")
             self._run_logged(
-                self.pip_install_command(app, venv_python),
+                self.uv_install_command(app, venv_python),
                 log_handle,
-                self.PIP_TIMEOUT_SECONDS,
+                self.INSTALL_TIMEOUT_SECONDS,
                 "Dependency installation failed",
                 DependencyInstallationError,
             )
@@ -223,6 +251,7 @@ class EnvironmentManager:
                 "python_version": py_ver,
                 "requirements_sha256": self.requirements_hash(app.requirements),
                 "runtime_fingerprint": self.runtime_fingerprint(),
+                "installer": "uv",
                 "installed_at": datetime.now(timezone.utc).isoformat(),
             },
         )

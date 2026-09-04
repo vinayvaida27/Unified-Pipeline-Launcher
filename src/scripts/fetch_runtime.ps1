@@ -18,6 +18,8 @@ param(
 )
 
 $ErrorActionPreference = "Stop"
+. (Join-Path $PSScriptRoot "common.ps1")
+Clear-LauncherPythonEnvironment
 $Root = Split-Path -Parent $PSScriptRoot
 $RuntimeDir = Join-Path $Root "runtime"
 $Work = Join-Path $env:TEMP "usl-runtime-$Version"
@@ -51,14 +53,15 @@ Write-Host "Bootstrapping pip..."
 
 # Validate: venv + pip + ssl + subprocess must all import and work.
 Write-Host "Validating runtime..."
-& $Python -c "import ssl, subprocess, venv, pip, sys; print('Validated', sys.version)"
+Assert-LauncherPythonRuntime $Python
+& $Python -I -c "import ssl, subprocess, venv, pip, sys; print('Validated', sys.version)"
 $TestVenv = Join-Path $RuntimeDir "_venv_validation"
 & $Python -m venv $TestVenv
 Remove-Item -LiteralPath $TestVenv -Recurse -Force
 
 # Record runtime info.
 $RuntimeInfo = Join-Path $RuntimeDir "runtime_info.json"
-& $Python -c "import platform, json, pathlib, datetime; pathlib.Path(r'$RuntimeInfo').write_text(json.dumps({'python_version': platform.python_version(), 'architecture': platform.architecture()[0], 'source': 'nuget:python:$Version', 'validated': True, 'validated_at': datetime.datetime.utcnow().isoformat() + 'Z'}, indent=2), encoding='utf-8')"
+& $Python -I -c "import platform, json, pathlib, datetime, sys; pathlib.Path(sys.argv[1]).write_text(json.dumps({'python_version': platform.python_version(), 'architecture': platform.architecture()[0], 'source': 'nuget:python:$Version', 'validated': True, 'validated_at': datetime.datetime.utcnow().isoformat() + 'Z'}, indent=2), encoding='utf-8')" $RuntimeInfo
 
 Remove-Item -LiteralPath $Zip -Force
 Remove-Item -LiteralPath $Work -Recurse -Force

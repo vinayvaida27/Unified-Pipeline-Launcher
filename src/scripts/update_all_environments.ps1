@@ -3,9 +3,8 @@
     Update the shared runtime and every recognized launcher virtual environment.
 
 .DESCRIPTION
-    Updates packages from the repository requirements files, then runs pip check
-    and a Streamlit import in each environment. Unknown/orphaned environments are
-    checked but are not upgraded without a requirements file.
+    Synchronizes the development environment from uv.lock, updates packages in
+    the bundled runtime and app environments with uv, then validates each one.
 
 .PARAMETER DryRun
     Discover and print the update plan without changing an environment.
@@ -17,11 +16,12 @@ param(
 )
 
 $ErrorActionPreference = "Stop"
+. (Join-Path $PSScriptRoot "common.ps1")
+Clear-LauncherPythonEnvironment
 $SourceRoot = Split-Path -Parent $PSScriptRoot
 $DefaultRoot = Split-Path -Parent $SourceRoot
-$ReleaseDir = $ReleaseDir.Trim().Trim([char]34)
 if ($ReleaseDir -eq "") { $ReleaseDir = $DefaultRoot }
-$Root = (Resolve-Path -LiteralPath $ReleaseDir -ErrorAction Stop).Path
+$Root = Resolve-LauncherPath $ReleaseDir
 $ReleaseSourceRoot = Join-Path $Root "src"
 if (-not (Test-Path -LiteralPath $ReleaseSourceRoot)) { $ReleaseSourceRoot = $Root }
 
@@ -60,9 +60,8 @@ function Add-UpdateJob {
     $Jobs.Add([pscustomobject]@{ Name = $Name; Python = $ResolvedPython; Requirement = $Requirement })
 }
 
-$DevRequirement = Join-Path $ReleaseSourceRoot "requirements-dev.txt"
-Add-UpdateJob "repository development environment" (Join-Path $Root ".venv\Scripts\python.exe") $DevRequirement
-Add-UpdateJob "source development environment" (Join-Path $ReleaseSourceRoot ".venv\Scripts\python.exe") $DevRequirement
+Add-UpdateJob "repository development environment" (Join-Path $Root ".venv\Scripts\python.exe") "project:dev"
+Add-UpdateJob "source development environment" (Join-Path $ReleaseSourceRoot ".venv\Scripts\python.exe") "project:dev"
 
 if (Test-Path -LiteralPath $EnvironmentRoot) {
     foreach ($AppDirectory in Get-ChildItem -LiteralPath $EnvironmentRoot -Directory -ErrorAction SilentlyContinue) {
@@ -100,6 +99,11 @@ Write-Host "Dry run   : $DryRun"
 
 $Failures = [System.Collections.Generic.List[string]]::new()
 foreach ($Failure in $DiscoveryFailures) { $Failures.Add($Failure) }
+$Uv = ""
+if (-not $DryRun) {
+    $Uv = & (Join-Path $PSScriptRoot "ensure_uv.ps1")
+    if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+}
 $SharedPython = Join-Path $ReleaseSourceRoot "runtime\python.exe"
 Write-Host ""
 Write-Host "[shared runtime] $SharedPython"
@@ -110,8 +114,8 @@ if (Test-Path -LiteralPath $SharedPython) {
         try {
             & (Join-Path $PSScriptRoot "prepare_shared_runtime.ps1") -ReleaseDir $Root -Upgrade
             if ($LASTEXITCODE -ne 0) { throw "prepare_shared_runtime.ps1 exited $LASTEXITCODE" }
-            & $SharedPython -m pip check
-            if ($LASTEXITCODE -ne 0) { throw "pip check exited $LASTEXITCODE" }
+            & $Uv pip check --python $SharedPython --no-config
+            if ($LASTEXITCODE -ne 0) { throw "uv dependency check exited $LASTEXITCODE" }
         } catch {
             $Failures.Add("shared runtime: $($_.Exception.Message)")
         }
@@ -127,28 +131,61 @@ foreach ($Job in $Jobs) {
     Write-Host "[$($Job.Name)] $($Job.Python)"
     if ($Job.Requirement -eq "") {
         Write-Warning "No matching requirements file; checking this environment without upgrading it."
+    } elseif ($Job.Requirement -eq "project:dev") {
+        Write-Host "  Source: pyproject.toml + uv.lock"
     } else {
         Write-Host "  Requirements: $($Job.Requirement)"
     }
     if ($DryRun) {
-        Write-Host "  PLAN: pip install --upgrade, pip check, import streamlit"
+        Write-Host "  PLAN: uv sync/install, uv pip check, import streamlit"
         continue
     }
     try {
-        & $Job.Python -m pip install --upgrade pip
-        if ($LASTEXITCODE -ne 0) { throw "pip upgrade exited $LASTEXITCODE" }
-        if ($Job.Requirement -ne "") {
+        if ($Job.Requirement -eq "project:dev") {
+            $EnvironmentPath = Split-Path -Parent (Split-Path -Parent $Job.Python)
+            $PythonVersion = & $Job.Python -I -c "import sys; print(f'{sys.version_info.major}.{sys.version_info.minor}')"
+            $PreviousProjectEnvironment = $env:UV_PROJECT_ENVIRONMENT
+            try {
+                $env:UV_PROJECT_ENVIRONMENT = $EnvironmentPath
+                & $Uv sync --project $ReleaseSourceRoot --locked --python $Job.Python
+                $NeedsRebuild = $LASTEXITCODE -ne 0
+                if (-not $NeedsRebuild) {
+                    & $Uv pip check --python $Job.Python --no-config
+                    $NeedsRebuild = $LASTEXITCODE -ne 0
+                }
+                if ($NeedsRebuild) {
+                    Write-Warning "The development environment is incomplete; rebuilding it from uv.lock."
+                    & $Uv venv --clear --python $PythonVersion $EnvironmentPath
+                    if ($LASTEXITCODE -ne 0) { throw "development environment rebuild exited $LASTEXITCODE" }
+                    & $Uv sync --project $ReleaseSourceRoot --locked --python $PythonVersion
+                    if ($LASTEXITCODE -ne 0) { throw "development environment sync exited $LASTEXITCODE" }
+                }
+            } finally {
+                if ($null -eq $PreviousProjectEnvironment) {
+                    Remove-Item -LiteralPath "Env:UV_PROJECT_ENVIRONMENT" -ErrorAction SilentlyContinue
+                } else {
+                    $env:UV_PROJECT_ENVIRONMENT = $PreviousProjectEnvironment
+                }
+            }
+        } elseif ($Job.Requirement -ne "") {
+            $InstallArgs = @("pip", "install", "--python", $Job.Python, "--no-config", "--upgrade")
+            $Wheelhouse = Join-Path (Split-Path -Parent $Job.Requirement) "wheelhouse"
+            if (Test-Path -LiteralPath $Wheelhouse) {
+                $Wheels = @(Get-ChildItem -LiteralPath $Wheelhouse -File -ErrorAction SilentlyContinue)
+                if ($Wheels.Count -gt 0) { $InstallArgs += @("--no-index", "--find-links", $Wheelhouse) }
+            }
+            $InstallArgs += @("-r", $Job.Requirement)
             Push-Location -LiteralPath (Split-Path -Parent $Job.Requirement)
             try {
-                & $Job.Python -m pip install --upgrade -r $Job.Requirement
+                & $Uv @InstallArgs
                 if ($LASTEXITCODE -ne 0) { throw "requirements update exited $LASTEXITCODE" }
             } finally {
                 Pop-Location
             }
         }
-        & $Job.Python -m pip check
-        if ($LASTEXITCODE -ne 0) { throw "pip check exited $LASTEXITCODE" }
-        & $Job.Python -c "import streamlit; print('  Streamlit', streamlit.__version__)"
+        & $Uv pip check --python $Job.Python --no-config
+        if ($LASTEXITCODE -ne 0) { throw "uv dependency check exited $LASTEXITCODE" }
+        & $Job.Python -I -c "import streamlit; print('  Streamlit', streamlit.__version__)"
         if ($LASTEXITCODE -ne 0) { throw "Streamlit import exited $LASTEXITCODE" }
     } catch {
         $Failures.Add("$($Job.Name): $($_.Exception.Message)")

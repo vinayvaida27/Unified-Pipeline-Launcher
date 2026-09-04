@@ -3,6 +3,7 @@ src/.venv/
 .agents/
 *.md
 !/README.md
+!/AGENTS.md
 .coverage
 __pycache__/
 *.py[cod]

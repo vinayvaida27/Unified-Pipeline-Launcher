@@ -11,12 +11,15 @@ dependencies = [
   "PySide6>=6.7,<7",
 ]
 
-[project.optional-dependencies]
+[dependency-groups]
 dev = [
   "pytest>=8",
   "streamlit>=1.40,<2",
   "pyinstaller>=6",
 ]
+
+[tool.uv]
+required-version = "==0.11.14"
 
 [tool.setuptools.packages.find]
 include = ["launcher*"]

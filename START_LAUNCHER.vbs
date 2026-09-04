@@ -1,7 +1,7 @@
 Option Explicit
 
 Dim fso, shell, root, srcRoot, launcherExe, sourcePythonw, pythonw, config, command
-Dim cacheRoot, cachedPythonw, sourceMarker, cachedMarker
+Dim cacheRoot, cachedRuntime, cachedPython, cachedPythonw, sourceMarker, cachedMarker
 
 Set fso = CreateObject("Scripting.FileSystemObject")
 Set shell = CreateObject("WScript.Shell")
@@ -19,11 +19,15 @@ config = fso.BuildPath(srcRoot, "config\launcher_config.json")
 
 cacheRoot = LocalCacheDirectory(config)
 If cacheRoot <> "" Then
-    cachedPythonw = fso.BuildPath(cacheRoot, "runtime\current\pythonw.exe")
+    cachedRuntime = fso.BuildPath(cacheRoot, "runtime\current")
+    cachedPython = fso.BuildPath(cachedRuntime, "python.exe")
+    cachedPythonw = fso.BuildPath(cachedRuntime, "pythonw.exe")
     sourceMarker = fso.BuildPath(srcRoot, "runtime\.shared_runtime_ready.json")
     cachedMarker = fso.BuildPath(cacheRoot, "runtime\current\.shared_runtime_ready.json")
-    If fso.FileExists(cachedPythonw) And FilesMatch(sourceMarker, cachedMarker) Then
-        pythonw = cachedPythonw
+    If fso.FileExists(cachedPythonw) And fso.FileExists(cachedPython) And FilesMatch(sourceMarker, cachedMarker) Then
+        If RuntimeIsSelfContained(cachedPython) Then
+            pythonw = cachedPythonw
+        End If
     End If
 End If
 
@@ -56,6 +60,17 @@ Function LocalCacheDirectory(configPath)
     value = Replace(value, "\\", "\")
     value = Replace(value, "/", "\")
     LocalCacheDirectory = shell.ExpandEnvironmentStrings(value)
+End Function
+
+Function RuntimeIsSelfContained(pythonPath)
+    Dim probe, exitCode
+    RuntimeIsSelfContained = False
+    probe = """" & pythonPath & """ -I -c ""import encodings,os,sys;root=os.path.normcase(os.path.realpath(os.path.dirname(sys.executable)));paths=(sys.prefix,sys.base_prefix,encodings.__file__);raise SystemExit(0 if all(os.path.commonpath((root,os.path.normcase(os.path.realpath(path))))==root for path in paths) else 86)"""
+    On Error Resume Next
+    exitCode = shell.Run(probe, 0, True)
+    If Err.Number = 0 Then RuntimeIsSelfContained = (exitCode = 0)
+    Err.Clear
+    On Error GoTo 0
 End Function
 
 Function FilesMatch(firstPath, secondPath)

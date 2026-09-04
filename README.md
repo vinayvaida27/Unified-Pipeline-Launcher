@@ -53,7 +53,9 @@ If installation fails, `INSTALL.bat` is kept so it can be run again.
 The launcher opens apps in an isolated Microsoft Edge Guest window with browser
 extensions disabled. App servers bind only to `127.0.0.1`, use Streamlit's CORS
 and XSRF protections, and are stopped when the launcher exits. Startup also
-removes identity-matched processes left by an earlier crash.
+removes identity-matched processes left by an earlier crash. Normal app launches
+run the bundled Python directly; dependency tools are not invoked when an app is
+opened.
 
 ## Pull Updates
 
@@ -65,9 +67,10 @@ git pull --ff-only origin main
 .\UPDATE_PACKAGES.bat
 ```
 
-`git pull` downloads launcher and app changes. `UPDATE_PACKAGES.bat` updates the
-portable runtime and every recognized virtual environment from the checked-in
-requirements files. Start the launcher again after both commands finish.
+`git pull` downloads launcher and app changes. `UPDATE_PACKAGES.bat` bootstraps
+the project's pinned `uv` tool when needed, updates the portable runtime and any
+recognized virtual environments, then validates them. Start the launcher again
+after both commands finish.
 
 Make app changes in a development clone, commit and push them, and then pull
 them into other installations.
@@ -129,19 +132,33 @@ Unified-Pipeline-Launcher/
     |-- launcher/               Desktop application
     |-- scripts/                Install, update, and build support
     |-- tests/                  Automated tests
-    `-- pyproject.toml           Python package metadata
+    |-- pyproject.toml          Dependency and package metadata
+    `-- uv.lock                 Reproducible development/build lock
 ```
 
 ## Development
 
-Use Python 3.11 or 3.12:
+Run the setup script once. It installs the pinned `uv` tool into the launcher's
+local tools directory and synchronizes the locked Python 3.11/3.12 development
+environment:
 
 ```powershell
-py -3.11 -m venv .venv
-.\.venv\Scripts\python.exe -m pip install -r .\src\requirements-dev.txt
-Set-Location .\src
-..\.venv\Scripts\python.exe -m pytest
+.\src\scripts\setup_dev.ps1
 ```
+
+The script prints the exact test command for its controlled `uv.exe`.
+Developers who already have `uv` on `PATH` can use the standard workflow:
+
+```powershell
+uv sync --project .\src --locked
+uv run --project .\src --locked pytest .\src\tests
+```
+
+`src/pyproject.toml` defines launcher and development dependencies,
+`src/uv.lock` pins the complete development/build environment, and each
+`apps/<app>/requirements.txt` remains the source for that app's packages.
+`src/requirements-launcher.txt` is a generated compatibility export used when
+preparing portable shared runtimes.
 
 Run the public readiness checks from the repository root:
 

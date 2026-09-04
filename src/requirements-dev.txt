@@ -1,2 +1,0 @@
--e .[dev]
--r requirements-build.txt

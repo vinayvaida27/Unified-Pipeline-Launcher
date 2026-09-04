@@ -30,7 +30,9 @@ param(
 )
 
 $ErrorActionPreference = "Stop"
-$ReleaseDir = $ReleaseDir.Trim().Trim([char]34)
+. (Join-Path $PSScriptRoot "common.ps1")
+if ($ReleaseDir -ne "") { $ReleaseDir = Normalize-LauncherPathInput $ReleaseDir }
+Clear-LauncherPythonEnvironment
 
 # Auto-detect the release or repository root
 if ($ReleaseDir -eq "") {
@@ -51,7 +53,7 @@ if ($ReleaseDir -eq "") {
     }
 }
 
-$ReleaseDir = (Resolve-Path -LiteralPath $ReleaseDir -ErrorAction Stop).Path
+$ReleaseDir = Resolve-LauncherPath $ReleaseDir
 $SourceRoot = Join-Path $ReleaseDir "src"
 if (-not (Test-Path -LiteralPath $SourceRoot)) {
     $SourceRoot = $ReleaseDir
@@ -75,8 +77,12 @@ then re-run this script.
     exit 1
 }
 Write-Host "Runtime python : $Python"
+Assert-LauncherPythonRuntime $Python
 $PythonVersion = & $Python --version 2>&1
 Write-Host "Python version : $PythonVersion"
+$Uv = & (Join-Path $PSScriptRoot "ensure_uv.ps1")
+if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+Write-Host "Dependency tool: $(& $Uv --version)"
 
 # Read the app registry
 $AppsRoot = Join-Path $ReleaseDir "apps"
@@ -114,7 +120,7 @@ foreach ($App in $Registry.applications) {
     }
 
     $WheelDir = Join-Path $AppFolder "wheelhouse"
-    if (Test-Path -LiteralPath $WheelDir) {
+    if ((Test-Path -LiteralPath $WheelDir) -and @(Get-ChildItem -LiteralPath $WheelDir -File -ErrorAction SilentlyContinue).Count -gt 0) {
         $AllWheelhouses += $WheelDir
     }
 }
@@ -130,36 +136,40 @@ $Lines | Set-Content -LiteralPath $TempReq -Encoding UTF8
 Write-Host ""
 Write-Host "Merged $($AllRequirements.Count) requirements file(s)."
 
-# Upgrade pip
-Write-Host "Upgrading pip..."
-& $Python -m pip install --upgrade pip --quiet
-if ($LASTEXITCODE -ne 0) { Write-Warning "pip upgrade failed (non-fatal, continuing)" }
-
 # Install packages
 Write-Host ""
 Write-Host "Installing all packages into shared runtime..."
 Write-Host "(This may take a few minutes on first run.)"
 Write-Host ""
 
-$PipArgs = @("-m", "pip", "install", "--no-warn-script-location")
+$UvArgs = @("pip", "install", "--python", $Python, "--no-config")
 if ($Upgrade) {
-    $PipArgs += "--upgrade"
+    $UvArgs += "--upgrade"
 }
 
 if ($AllWheelhouses.Count -gt 0) {
-    Write-Host "Using offline wheelhouse(s) for faster install."
-    $PipArgs += "--prefer-binary"
+    Write-Host "Trying local wheelhouse(s) without network access."
     foreach ($WheelDir in $AllWheelhouses) {
-        $PipArgs += "--find-links"
-        $PipArgs += $WheelDir
+        $UvArgs += "--find-links"
+        $UvArgs += $WheelDir
     }
 }
 
-$PipArgs += "-r"
-$PipArgs += $TempReq
+$UvArgs += "-r"
+$UvArgs += $TempReq
 
-& $Python @PipArgs
-$ExitCode = $LASTEXITCODE
+if ($AllWheelhouses.Count -gt 0) {
+    & $Uv @UvArgs --offline
+    $ExitCode = $LASTEXITCODE
+    if ($ExitCode -ne 0) {
+        Write-Host "Local wheelhouses were incomplete; retrying with the package index."
+        & $Uv @UvArgs
+        $ExitCode = $LASTEXITCODE
+    }
+} else {
+    & $Uv @UvArgs
+    $ExitCode = $LASTEXITCODE
+}
 
 Remove-Item -LiteralPath $TempReq -Force -ErrorAction SilentlyContinue
 
@@ -171,7 +181,13 @@ if ($ExitCode -ne 0) {
 # Verify imports
 Write-Host ""
 Write-Host "Verifying launcher and Streamlit imports..."
-& $Python -c "from PySide6.QtWidgets import QApplication; import streamlit; print('  PySide6 and streamlit OK')"
+& $Uv pip check --python $Python --no-config
+if ($LASTEXITCODE -ne 0) {
+    Write-Error "Shared runtime dependency check failed."
+    exit 1
+}
+Assert-LauncherPythonRuntime $Python
+& $Python -I -c "from PySide6.QtWidgets import QApplication; import streamlit; print('  PySide6 and streamlit OK')"
 if ($LASTEXITCODE -ne 0) {
     Write-Error "PySide6 or Streamlit import failed after installation."
     exit 1
@@ -181,6 +197,8 @@ if ($LASTEXITCODE -ne 0) {
 $Marker = @{
     prepared_at   = (Get-Date -Format "o")
     python        = $PythonVersion.ToString()
+    installer     = "uv"
+    uv_version    = (& $Uv --version).ToString()
     release_dir   = $ReleaseDir.ToString()
     requirements  = $AllRequirements
 } | ConvertTo-Json -Depth 3

@@ -8,6 +8,11 @@ from launcher.app_discovery import discover_apps
 from launcher.local_cache import LocalCacheManager
 
 
+@pytest.fixture(autouse=True)
+def _accept_fake_test_runtimes(monkeypatch):
+    monkeypatch.setattr(LocalCacheManager, "_runtime_is_self_contained", staticmethod(lambda _python: True))
+
+
 def test_syncs_app_source_to_local_cache(tmp_path, repo_root):
     app = discover_apps(repo_root / "apps")[0]
     cache = LocalCacheManager(tmp_path / "cache")
@@ -118,6 +123,39 @@ def test_missing_cached_python_forces_runtime_refresh(tmp_path):
     refreshed_python = cache.sync_runtime_to_local_cache(runtime_python)
 
     assert refreshed_python.read_text(encoding="utf-8") == "source python"
+
+
+def test_non_relocatable_cached_runtime_is_replaced(tmp_path, monkeypatch):
+    source_runtime = tmp_path / "network_share" / "runtime"
+    source_runtime.mkdir(parents=True)
+    runtime_python = source_runtime / "python.exe"
+    runtime_python.write_text("self-contained", encoding="utf-8")
+    (source_runtime / ".shared_runtime_ready.json").write_text('{"prepared_at":"now"}\n', encoding="utf-8")
+    cache = LocalCacheManager(tmp_path / "cache")
+    cache.ensure_directories()
+    monkeypatch.setattr(
+        cache,
+        "_runtime_is_self_contained",
+        lambda python: python.read_text(encoding="utf-8") == "self-contained",
+    )
+    cached_python = cache.sync_runtime_to_local_cache(runtime_python)
+    cached_python.write_text("prefix points to network source", encoding="utf-8")
+
+    refreshed_python = cache.sync_runtime_to_local_cache(runtime_python)
+
+    assert refreshed_python.read_text(encoding="utf-8") == "self-contained"
+    assert cache.runtime_cache_refreshed
+
+
+def test_real_runtime_probe_ignores_poisoned_python_environment(repo_root, monkeypatch):
+    python = repo_root / "src" / "runtime" / "python.exe"
+    if not python.is_file():
+        pytest.skip("bundled runtime is not present")
+    monkeypatch.undo()
+    monkeypatch.setenv("PYTHONHOME", str(repo_root / "src"))
+    monkeypatch.setenv("PYTHONPATH", str(repo_root / "src"))
+
+    assert LocalCacheManager._runtime_is_self_contained(python)
 
 
 def test_interrupted_app_refresh_keeps_last_good_cache(tmp_path, copied_apps, monkeypatch):

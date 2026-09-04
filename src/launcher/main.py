@@ -104,11 +104,9 @@ def main(argv: list[str] | None = None) -> int:
 
     _set_windows_app_id()
 
-    from PySide6.QtCore import QLoggingCategory
     from PySide6.QtGui import QIcon
     from PySide6.QtWidgets import QApplication, QMessageBox
 
-    QLoggingCategory.setFilterRules("qt.svg.warning=false")
     qt_app = QApplication(sys.argv[:1])
     icon = QIcon(str(installation_root() / "assets" / "launcher" / "launcher.png"))
     if not icon.isNull():
