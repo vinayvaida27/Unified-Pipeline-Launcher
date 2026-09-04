@@ -55,12 +55,19 @@ Invoke-GateStep "startup entrypoints" {
     $NormalBat = Get-Content (Join-Path $PublicRoot "START_LAUNCHER.bat") -Raw
     $DebugBat = Get-Content (Join-Path $PublicRoot "START_LAUNCHER_DEBUG.bat") -Raw
     $Vbs = Get-Content (Join-Path $PublicRoot "START_LAUNCHER.vbs") -Raw
-    foreach ($Text in @($NormalBat, $DebugBat, $Vbs)) {
-        if ($Text -notmatch "-m\s+launcher") { throw "Launcher entrypoints must start the launcher package with -m launcher." }
+    $ShortcutScript = Get-Content (Join-Path $Root "scripts\create_launcher_shortcut.ps1") -Raw
+
+    foreach ($Text in @($NormalBat, $DebugBat)) {
+        if ($Text -notmatch "-m\s+launcher") { throw "Batch launcher entrypoints must start the launcher package with -m launcher." }
         if ($Text -match "-I\s+-m\s+launcher") { throw "Launcher module startup must not use -I because launcher lives in the source directory." }
-        if ($Text -notmatch "--no-local-cache") { throw "Launcher entrypoints must explicitly bypass expensive startup caching." }
-        if ($Text -notmatch "import launcher") { throw "Launcher entrypoints must validate that the source package is importable." }
+        if ($Text -notmatch "--no-local-cache") { throw "Batch launcher entrypoints must explicitly bypass expensive startup caching." }
+        if ($Text -notmatch "import launcher") { throw "Batch launcher entrypoints must validate that the source package is importable." }
     }
+
+    if ($NormalBat -notmatch "--silent") { throw "START_LAUNCHER.bat must support silent wrapper execution." }
+    if ($Vbs -notmatch "START_LAUNCHER\.bat") { throw "START_LAUNCHER.vbs must delegate to START_LAUNCHER.bat so startup logic has one source of truth." }
+    if ($Vbs -notmatch "--silent") { throw "START_LAUNCHER.vbs must invoke the batch launcher in silent mode." }
+    if ($ShortcutScript -notmatch "START_LAUNCHER\.vbs") { throw "The generated shortcut must target START_LAUNCHER.vbs." }
     if ($DebugBat -notmatch "import encodings") { throw "Debug startup must validate the bundled runtime." }
 }
 
