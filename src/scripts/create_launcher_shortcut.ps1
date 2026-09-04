@@ -5,9 +5,8 @@
 .DESCRIPTION
     The shortcut is generated on the target machine because .lnk files contain
     absolute paths. It works from paths with spaces, mapped drives, and UNC
-    shares. If launcher.exe exists at the public root, the shortcut targets it.
-    Otherwise it targets START_LAUNCHER.vbs, which selects a current local
-    runtime cache when one is available.
+    shares. The shortcut targets START_LAUNCHER.vbs so all normal launches use
+    the same path-independent bootstrap and bundled runtime logic.
 
 .EXAMPLE
     .\src\scripts\create_launcher_shortcut.ps1
@@ -51,34 +50,16 @@ $SourceRoot = Join-Path $Root "src"
 if (-not (Test-Path -LiteralPath $SourceRoot)) {
     $SourceRoot = $Root
 }
-$LauncherExe = Join-Path $Root "launcher.exe"
 $LauncherScript = Join-Path $Root "START_LAUNCHER.vbs"
 $ShortcutPath = Join-Path $Root "START_LAUNCHER.lnk"
-$LegacyBat = Join-Path $Root "START_LAUNCHER.bat"
-$DebugBat = Join-Path $Root "START_LAUNCHER_DEBUG.bat"
 
-if (Test-Path -LiteralPath $LegacyBat) {
-    if (Test-Path -LiteralPath $DebugBat) {
-        Remove-Item -LiteralPath $LegacyBat -Force
-        Write-Host "Removed legacy user-facing batch file: $LegacyBat"
-    } else {
-        Rename-Item -LiteralPath $LegacyBat -NewName "START_LAUNCHER_DEBUG.bat"
-        Write-Host "Renamed legacy batch file to: $DebugBat"
-    }
+if (-not (Test-Path -LiteralPath $LauncherScript)) {
+    throw "Launcher bootstrap not found: $LauncherScript"
 }
 
-if (Test-Path -LiteralPath $LauncherExe) {
-    $TargetPath = $LauncherExe
-    $Arguments = ""
-    $WorkingDirectory = $Root
-} else {
-    if (-not (Test-Path -LiteralPath $LauncherScript)) {
-        throw "Launcher bootstrap not found: $LauncherScript"
-    }
-    $TargetPath = Join-Path $env:SystemRoot "System32\wscript.exe"
-    $Arguments = "`"$LauncherScript`""
-    $WorkingDirectory = $Root
-}
+$TargetPath = Join-Path $env:SystemRoot "System32\wscript.exe"
+$Arguments = "`"$LauncherScript`""
+$WorkingDirectory = $Root
 
 $Shell = New-Object -ComObject WScript.Shell
 $Shortcut = $Shell.CreateShortcut($ShortcutPath)
