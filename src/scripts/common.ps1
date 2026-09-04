@@ -14,6 +14,32 @@ function Resolve-LauncherPath {
     return (Resolve-Path -LiteralPath (Normalize-LauncherPathInput $Path) -ErrorAction Stop).Path
 }
 
+function Get-LauncherRelativePath {
+    param(
+        [Parameter(Mandatory=$true)][string]$BasePath,
+        [Parameter(Mandatory=$true)][string]$Path
+    )
+
+    # Windows PowerShell 5.1 runs on .NET Framework, where
+    # [IO.Path]::GetRelativePath() does not exist.  Keep this helper compatible
+    # with both Windows PowerShell and PowerShell 7.
+    $Base = [IO.Path]::GetFullPath((Normalize-LauncherPathInput $BasePath))
+    $Target = [IO.Path]::GetFullPath((Normalize-LauncherPathInput $Path))
+    $Separators = [char[]]@([IO.Path]::DirectorySeparatorChar, [IO.Path]::AltDirectorySeparatorChar)
+    $Base = $Base.TrimEnd($Separators)
+
+    if ($Target.Equals($Base, [StringComparison]::OrdinalIgnoreCase)) {
+        return "."
+    }
+
+    $Prefix = $Base + [IO.Path]::DirectorySeparatorChar
+    if (-not $Target.StartsWith($Prefix, [StringComparison]::OrdinalIgnoreCase)) {
+        throw "Path is outside base directory. Base: $Base ; Path: $Target"
+    }
+
+    return $Target.Substring($Prefix.Length)
+}
+
 function Clear-LauncherPythonEnvironment {
     foreach ($Name in @("PYTHONPATH", "PYTHONHOME", "PYTHONSTARTUP", "PYTHONUSERBASE")) {
         Remove-Item -LiteralPath "Env:$Name" -ErrorAction SilentlyContinue
