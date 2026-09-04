@@ -1,6 +1,6 @@
 Option Explicit
 
-Dim fso, shell, root, srcRoot, python, pythonw, config, command, probe, exitCode
+Dim fso, shell, root, srcRoot, python, pythonw, config, command, probe, launcherProbe, exitCode
 
 Set fso = CreateObject("Scripting.FileSystemObject")
 Set shell = CreateObject("WScript.Shell")
@@ -16,7 +16,7 @@ config = fso.BuildPath(srcRoot, "config\launcher_config.json")
 
 If Not fso.FileExists(python) Or Not fso.FileExists(pythonw) Then
     MsgBox "Python runtime was not found or is incomplete:" & vbCrLf & fso.BuildPath(srcRoot, "runtime") & vbCrLf & vbCrLf & _
-           "Run INSTALL.bat or src\scripts\deploy_network.ps1 first.", _
+           "Run src\scripts\deploy_network.ps1 first.", _
            vbCritical, "Unified Pipeline Launcher"
     WScript.Quit 1
 End If
@@ -38,8 +38,7 @@ On Error GoTo 0
 
 shell.CurrentDirectory = srcRoot
 
-' Validate the actual runtime before using pythonw.exe. This turns silent
-' startup failures into a useful error message for the user.
+' Validate the runtime itself in isolated mode.
 probe = """" & python & """ -I -c ""import encodings; from PySide6.QtWidgets import QApplication; import streamlit"""
 On Error Resume Next
 exitCode = shell.Run(probe, 0, True)
@@ -55,6 +54,16 @@ If exitCode <> 0 Then
     WScript.Quit exitCode
 End If
 
-' Direct network execution is intentional. Local caching is opt-in only.
-command = """" & pythonw & """ -I -m launcher --config """ & config & """ --no-local-cache"
+' The launcher package lives beside the runtime under src\.  Do not use -I for
+' module startup because isolated mode intentionally removes the working/source
+' directory from sys.path. Environment contamination is already scrubbed above.
+launcherProbe = """" & python & """ -c ""import launcher"""
+exitCode = shell.Run(launcherProbe, 0, True)
+If exitCode <> 0 Then
+    MsgBox "The launcher source package could not be imported." & vbCrLf & vbCrLf & _
+           "Run START_LAUNCHER_DEBUG.bat for details.", vbCritical, "Unified Pipeline Launcher"
+    WScript.Quit exitCode
+End If
+
+command = """" & pythonw & """ -m launcher --config """ & config & """ --no-local-cache"
 shell.Run command, 0, False
