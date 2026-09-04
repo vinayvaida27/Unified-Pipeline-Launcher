@@ -34,7 +34,7 @@ Write-Host "  Unified Pipeline Launcher -- Install / Repair"
 Write-Host "  $Root"
 Write-Host "============================================================"
 
-# Step 1: Validate the bundled runtime.  Existence of python.exe alone is not
+# Step 1: Validate the bundled runtime. Existence of python.exe alone is not
 # sufficient: a partially deleted runtime can still contain python.exe while
 # failing before startup because Lib\encodings or other stdlib files are gone.
 $RuntimeValid = $false
@@ -75,12 +75,24 @@ Write-Host "[2/3] Installing launcher and app packages into shared runtime..."
 & (Join-Path $PSScriptRoot "prepare_shared_runtime.ps1") -ReleaseDir $Root
 if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
 
-# Final runtime/import validation before creating a user-facing shortcut.
+# Final runtime/package validation. Keep the runtime probe isolated, but import
+# the launcher source from SourceRoot without -I because isolated mode removes
+# the working/source directory from sys.path.
 Write-Host ""
-Write-Host "      Validating launcher imports..."
+Write-Host "      Validating runtime and launcher imports..."
 & $Python -I -c "import encodings; from PySide6.QtWidgets import QApplication; import streamlit; print('      Runtime validation: OK')"
 if ($LASTEXITCODE -ne 0) {
     throw "Runtime/package validation failed after deployment."
+}
+
+Push-Location $SourceRoot
+try {
+    & $Python -c "import launcher; print('      Launcher module validation: OK')"
+    if ($LASTEXITCODE -ne 0) {
+        throw "Launcher source package could not be imported from: $SourceRoot"
+    }
+} finally {
+    Pop-Location
 }
 
 # Step 3: Create the no-console shortcut.
