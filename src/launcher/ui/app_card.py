@@ -2,8 +2,9 @@
 
 from __future__ import annotations
 
-from PySide6.QtCore import QSize, Qt, Signal
+from PySide6.QtCore import QByteArray, QSize, Qt, Signal
 from PySide6.QtGui import QPixmap
+from PySide6.QtSvg import QSvgRenderer
 from PySide6.QtWidgets import (
     QFrame,
     QHBoxLayout,
@@ -15,6 +16,33 @@ from PySide6.QtWidgets import (
 
 from ..models import ApplicationManifest, ApplicationStatus
 from .icons import ui_icon
+
+
+def _safe_icon_pixmap(path, size: int = 42) -> QPixmap:
+    """Load an application icon without flooding stderr for malformed SVGs.
+
+    SVG data is validated in-memory before QPixmap sees it. Invalid SVGs return
+    a null pixmap so the UI uses the existing letter fallback instead of asking
+    Qt to repeatedly render malformed path data.
+    """
+
+    if path.suffix.lower() != ".svg":
+        return QPixmap(str(path))
+    try:
+        data = path.read_bytes()
+    except OSError:
+        return QPixmap()
+    renderer = QSvgRenderer(QByteArray(data))
+    if not renderer.isValid():
+        return QPixmap()
+    pixmap = QPixmap(size, size)
+    pixmap.fill(Qt.GlobalColor.transparent)
+    from PySide6.QtGui import QPainter
+
+    painter = QPainter(pixmap)
+    renderer.render(painter)
+    painter.end()
+    return pixmap
 
 
 class AppCard(QFrame):
@@ -35,7 +63,7 @@ class AppCard(QFrame):
         self.icon_label = QLabel()
         self.icon_label.setFixedSize(42, 42)
         self.icon_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        pixmap = QPixmap(str(app.icon))
+        pixmap = _safe_icon_pixmap(app.icon)
         if not pixmap.isNull():
             self.icon_label.setPixmap(
                 pixmap.scaled(
