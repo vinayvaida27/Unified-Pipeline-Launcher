@@ -11,7 +11,7 @@ set "CONFIG=%SRC%\config\launcher_config.json"
 if not exist "%PYTHON%" (
     echo ERROR: Bundled Python runtime not found:
     echo   %PYTHON%
-    echo Run INSTALL.bat or src\scripts\deploy_network.ps1 first.
+    echo Run src\scripts\deploy_network.ps1 first.
     pause
     exit /b 1
 )
@@ -19,7 +19,7 @@ if not exist "%PYTHON%" (
 if not exist "%PYTHONW%" (
     echo ERROR: Bundled pythonw.exe not found:
     echo   %PYTHONW%
-    echo Run INSTALL.bat or src\scripts\deploy_network.ps1 first.
+    echo Run src\scripts\deploy_network.ps1 first.
     pause
     exit /b 1
 )
@@ -47,7 +47,16 @@ if errorlevel 1 (
     exit /b 1
 )
 
-start "" "%PYTHONW%" -I -m launcher --config "%CONFIG%" --no-local-cache
+"%PYTHON%" -c "import launcher" >nul 2>&1
+if errorlevel 1 (
+    echo ERROR: Launcher source package could not be imported.
+    echo Run START_LAUNCHER_DEBUG.bat for details.
+    popd
+    pause
+    exit /b 1
+)
+
+start "" "%PYTHONW%" -m launcher --config "%CONFIG%" --no-local-cache
 set "EXITCODE=%ERRORLEVEL%"
 popd
 exit /b %EXITCODE%
