@@ -9,10 +9,11 @@ from threading import Event
 from urllib.parse import parse_qsl, urlencode, urlparse, urlunparse
 from uuid import uuid4
 
-from PySide6.QtCore import Qt, QThreadPool, QTimer, QUrl
+from PySide6.QtCore import QSize, Qt, QThreadPool, QTimer, QUrl
 from PySide6.QtGui import QDesktopServices
 from PySide6.QtWidgets import (
     QComboBox,
+    QFrame,
     QGridLayout,
     QHBoxLayout,
     QLabel,
@@ -21,6 +22,7 @@ from PySide6.QtWidgets import (
     QMessageBox,
     QPushButton,
     QScrollArea,
+    QStyle,
     QVBoxLayout,
     QWidget,
 )
@@ -38,6 +40,7 @@ from .styles import APP_STYLE
 from .workers import Worker
 
 LOG = logging.getLogger(__name__)
+SIDEBAR_WIDTH = 208
 
 
 class MainWindow(QMainWindow):
@@ -83,89 +86,144 @@ class MainWindow(QMainWindow):
     def _build_ui(self) -> None:
         root = QWidget()
         root.setObjectName("root")
-        layout = QVBoxLayout(root)
+        shell = QHBoxLayout(root)
+        shell.setContentsMargins(0, 0, 0, 0)
+        shell.setSpacing(0)
+
+        self.sidebar = QWidget()
+        self.sidebar.setObjectName("sidebar")
+        self.sidebar.setFixedWidth(SIDEBAR_WIDTH)
+        sidebar_layout = QVBoxLayout(self.sidebar)
+        sidebar_layout.setContentsMargins(16, 18, 16, 16)
+        sidebar_layout.setSpacing(6)
+
+        brand_layout = QHBoxLayout()
+        brand_layout.setSpacing(10)
+        brand_icon = self.windowIcon().pixmap(38, 38)
+        if not brand_icon.isNull():
+            brand = QLabel()
+            brand.setObjectName("brandIcon")
+            brand.setFixedSize(40, 40)
+            brand.setAlignment(Qt.AlignmentFlag.AlignCenter)
+            brand.setPixmap(brand_icon)
+            brand_layout.addWidget(brand, 0, Qt.AlignmentFlag.AlignTop)
+        brand_title = QLabel(self.config.platform_name)
+        brand_title.setObjectName("brandTitle")
+        brand_title.setWordWrap(True)
+        brand_layout.addWidget(brand_title, 1, Qt.AlignmentFlag.AlignVCenter)
+        sidebar_layout.addLayout(brand_layout)
+        sidebar_layout.addSpacing(22)
+
+        section_label = QLabel("WORKSPACE")
+        section_label.setObjectName("navSection")
+        sidebar_layout.addWidget(section_label)
+
+        self.applications_nav = QPushButton("Applications")
+        self.applications_nav.setObjectName("navActive")
+        self.settings_nav = QPushButton("Settings")
+        self.settings_nav.setObjectName("navButton")
+        self.about_nav = QPushButton("About")
+        self.about_nav.setObjectName("navButton")
+        nav_items = (
+            (self.applications_nav, QStyle.StandardPixmap.SP_ComputerIcon),
+            (self.settings_nav, QStyle.StandardPixmap.SP_FileDialogDetailedView),
+            (self.about_nav, QStyle.StandardPixmap.SP_MessageBoxInformation),
+        )
+        for button, icon in nav_items:
+            button.setIcon(self.style().standardIcon(icon))
+            button.setIconSize(QSize(16, 16))
+            button.setFixedHeight(38)
+            button.setCursor(Qt.CursorShape.PointingHandCursor)
+            sidebar_layout.addWidget(button)
+        self.applications_nav.setToolTip("View applications")
+        self.settings_nav.setToolTip("View launcher settings")
+        self.about_nav.setToolTip("About this launcher")
+        self.settings_nav.clicked.connect(lambda: SettingsDialog(self.config, self).exec())
+        self.about_nav.clicked.connect(lambda: show_about(self, self.config.platform_name))
+        sidebar_layout.addStretch(1)
+
+        sidebar_rule = QFrame()
+        sidebar_rule.setObjectName("sidebarRule")
+        sidebar_rule.setFrameShape(QFrame.Shape.HLine)
+        sidebar_layout.addWidget(sidebar_rule)
+        self.sidebar_count = QLabel(f"{len(self.apps)} configured")
+        self.sidebar_count.setObjectName("sidebarMeta")
+        sidebar_layout.addWidget(self.sidebar_count)
+        shell.addWidget(self.sidebar)
+
+        content = QWidget()
+        content.setObjectName("content")
+        layout = QVBoxLayout(content)
         layout.setContentsMargins(0, 0, 0, 0)
         layout.setSpacing(0)
 
         header = QWidget()
         header.setObjectName("header")
-        header.setFixedHeight(82)
+        header.setFixedHeight(88)
         header_layout = QHBoxLayout(header)
-        header_layout.setContentsMargins(24, 14, 24, 14)
-        header_layout.setSpacing(8)
+        header_layout.setContentsMargins(20, 16, 20, 14)
+        header_layout.setSpacing(10)
         title_box = QVBoxLayout()
-        title_box.setSpacing(1)
+        title_box.setSpacing(2)
         title_box.setAlignment(Qt.AlignmentFlag.AlignVCenter)
-        title = QLabel(self.config.platform_name)
-        title.setObjectName("platformTitle")
+        title = QLabel("Applications")
+        title.setObjectName("pageTitle")
         self.results_label = QLabel(self._application_count_text(len(self.apps)))
-        self.results_label.setObjectName("platformSubtitle")
+        self.results_label.setObjectName("pageSubtitle")
         title_box.addWidget(title)
         title_box.addWidget(self.results_label)
         self.startup_summary = QLabel("")
         self.startup_summary.setObjectName("summary")
-        about = QPushButton("About")
-        settings = QPushButton("Settings")
-        about.setObjectName("ghost")
-        settings.setObjectName("ghost")
-        about.setFixedHeight(34)
-        settings.setFixedHeight(34)
-        about.setToolTip("About this launcher")
-        settings.setToolTip("View launcher settings")
-        settings.clicked.connect(lambda: SettingsDialog(self.config, self).exec())
-        about.clicked.connect(lambda: show_about(self, self.config.platform_name))
-        brand_icon = self.windowIcon().pixmap(42, 42)
-        if not brand_icon.isNull():
-            brand = QLabel()
-            brand.setFixedSize(44, 44)
-            brand.setAlignment(Qt.AlignmentFlag.AlignCenter)
-            brand.setPixmap(brand_icon)
-            header_layout.addWidget(brand, 0, Qt.AlignmentFlag.AlignVCenter)
         header_layout.addLayout(title_box)
         header_layout.addStretch(1)
         header_layout.addWidget(self.startup_summary, 0, Qt.AlignmentFlag.AlignVCenter)
-        header_layout.addWidget(settings, 0, Qt.AlignmentFlag.AlignVCenter)
-        header_layout.addWidget(about, 0, Qt.AlignmentFlag.AlignVCenter)
+
+        self.open_all_button = QPushButton("Open All")
+        self.stop_all_button = QPushButton("Stop All")
+        self.open_all_button.setObjectName("primary")
+        self.stop_all_button.setObjectName("danger")
+        self.open_all_button.setIcon(self.style().standardIcon(QStyle.StandardPixmap.SP_MediaPlay))
+        self.stop_all_button.setIcon(self.style().standardIcon(QStyle.StandardPixmap.SP_MediaStop))
+        self.open_all_button.setIconSize(QSize(15, 15))
+        self.stop_all_button.setIconSize(QSize(15, 15))
+        self.open_all_button.setFixedSize(98, 38)
+        self.stop_all_button.setFixedSize(94, 38)
+        self.open_all_button.setCursor(Qt.CursorShape.PointingHandCursor)
+        self.stop_all_button.setCursor(Qt.CursorShape.PointingHandCursor)
+        self.open_all_button.setToolTip("Open all visible applications")
+        self.stop_all_button.setToolTip("Stop all running applications")
+        self.open_all_button.clicked.connect(self.open_all_apps)
+        self.stop_all_button.clicked.connect(self.stop_all_apps)
+        header_layout.addWidget(self.open_all_button, 0, Qt.AlignmentFlag.AlignVCenter)
+        header_layout.addWidget(self.stop_all_button, 0, Qt.AlignmentFlag.AlignVCenter)
         layout.addWidget(header)
 
         toolbar_holder = QWidget()
         toolbar_holder.setObjectName("toolbar")
         toolbar_holder.setFixedHeight(64)
         toolbar = QHBoxLayout(toolbar_holder)
-        toolbar.setContentsMargins(24, 12, 24, 12)
-        toolbar.setSpacing(10)
+        toolbar.setContentsMargins(20, 12, 20, 12)
+        toolbar.setSpacing(8)
         self.search = QLineEdit()
         self.search.setPlaceholderText("Search applications")
-        self.search.setMinimumWidth(240)
-        self.search.setMaximumWidth(560)
+        self.search.setMinimumWidth(260)
+        self.search.setMaximumWidth(520)
         self.search.setFixedHeight(40)
         self.search.setClearButtonEnabled(True)
         self.search.setAccessibleName("Search applications")
         self.category = QComboBox()
         self.category.addItems(["All categories"] + sorted({app.category for app in self.apps}))
-        self.category.setFixedSize(190, 40)
+        self.category.setFixedSize(180, 40)
         self.category.setAccessibleName("Application category")
-        self.open_all_button = QPushButton("Open All")
-        self.stop_all_button = QPushButton("Stop All")
-        self.open_all_button.setObjectName("primary")
-        self.stop_all_button.setObjectName("danger")
-        self.open_all_button.setFixedSize(96, 40)
-        self.stop_all_button.setFixedSize(92, 40)
-        self.open_all_button.setToolTip("Open all visible applications")
-        self.stop_all_button.setToolTip("Stop all running applications")
-        self.open_all_button.clicked.connect(self.open_all_apps)
-        self.stop_all_button.clicked.connect(self.stop_all_apps)
         toolbar.addWidget(self.search, 1)
         toolbar.addWidget(self.category)
         toolbar.addStretch(1)
-        toolbar.addWidget(self.open_all_button)
-        toolbar.addWidget(self.stop_all_button)
         layout.addWidget(toolbar_holder)
 
         self.grid_widget = QWidget()
         self.grid_widget.setObjectName("grid")
         self.grid = QGridLayout(self.grid_widget)
-        self.grid.setContentsMargins(24, 20, 24, 24)
+        self.grid.setContentsMargins(20, 18, 20, 22)
         self.grid.setHorizontalSpacing(12)
         self.grid.setVerticalSpacing(12)
         self.grid.setAlignment(Qt.AlignmentFlag.AlignTop)
@@ -180,7 +238,9 @@ class MainWindow(QMainWindow):
         self.app_scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
         self.app_scroll.setWidget(self.grid_widget)
         layout.addWidget(self.app_scroll, 1)
+        shell.addWidget(content, 1)
         self.setCentralWidget(root)
+        self.applications_nav.clicked.connect(self.search.setFocus)
         self.search.textChanged.connect(self.apply_filters)
         self.category.currentTextChanged.connect(self.apply_filters)
         self._populate_cards()
@@ -210,14 +270,15 @@ class MainWindow(QMainWindow):
         self._filtered_app_ids = visible_ids
         visible_count = len(visible_ids)
         self.results_label.setText(self._application_count_text(visible_count))
+        self.sidebar_count.setText(f"{visible_count} shown / {len(self.apps)} configured")
         self.open_all_button.setEnabled(visible_count > 0)
         self._relayout_cards(force=True)
 
     def _desired_column_count(self, width: int | None = None) -> int:
-        width = width or self.width()
-        if width >= 1540:
+        content_width = (width or self.width()) - SIDEBAR_WIDTH
+        if content_width >= 1230:
             return 3
-        if width >= 820:
+        if content_width >= 620:
             return 2
         return 1
 

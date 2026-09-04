@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from PySide6.QtCore import Qt, Signal
+from PySide6.QtCore import QSize, Qt, Signal
 from PySide6.QtGui import QPixmap
 from PySide6.QtWidgets import (
     QFrame,
@@ -10,6 +10,7 @@ from PySide6.QtWidgets import (
     QLabel,
     QPushButton,
     QSizePolicy,
+    QStyle,
     QVBoxLayout,
 )
 
@@ -29,17 +30,17 @@ class AppCard(QFrame):
         self.app = app
         self.setObjectName("card")
         self.setProperty("state", "stopped")
-        self.setFixedHeight(142)
+        self.setFixedHeight(154)
         self.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed)
         self.icon_label = QLabel()
-        self.icon_label.setFixedSize(40, 40)
+        self.icon_label.setFixedSize(42, 42)
         self.icon_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
         pixmap = QPixmap(str(app.icon))
         if not pixmap.isNull():
             self.icon_label.setPixmap(
                 pixmap.scaled(
-                    40,
-                    40,
+                    42,
+                    42,
                     Qt.AspectRatioMode.KeepAspectRatio,
                     Qt.TransformationMode.SmoothTransformation,
                 )
@@ -56,28 +57,35 @@ class AppCard(QFrame):
         self.description.setWordWrap(True)
         self.description.setMaximumHeight(34)
         self.description.setSizePolicy(QSizePolicy.Policy.Ignored, QSizePolicy.Policy.Preferred)
-        self.version = QLabel(f"{app.category}  |  Version {app.version}")
+        self.version = QLabel(f"{app.category}  |  v{app.version}")
         self.version.setObjectName("appMeta")
         self.version.setSizePolicy(QSizePolicy.Policy.Ignored, QSizePolicy.Policy.Preferred)
         self.status = QLabel(ApplicationStatus.STOPPED.value)
         self.status.setObjectName("badge")
         self.status.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        self.status.setFixedSize(88, 28)
+        self.status.setFixedSize(78, 24)
         self.open_button = QPushButton("Open")
-        self.stop_button = QPushButton("Stop")
-        self.restart_button = QPushButton("Restart")
+        self.stop_button = QPushButton()
+        self.restart_button = QPushButton()
         self.log_button = QPushButton("Logs")
         self.open_button.setObjectName("primary")
-        self.stop_button.setObjectName("danger")
-        self.restart_button.setObjectName("secondary")
+        self.stop_button.setObjectName("toolDanger")
+        self.restart_button.setObjectName("tool")
         self.log_button.setObjectName("quiet")
-        for button, width in (
-            (self.log_button, 64),
-            (self.stop_button, 68),
-            (self.restart_button, 82),
-            (self.open_button, 86),
-        ):
-            button.setFixedSize(width, 34)
+        self.open_button.setIcon(self.style().standardIcon(QStyle.StandardPixmap.SP_MediaPlay))
+        self.stop_button.setIcon(self.style().standardIcon(QStyle.StandardPixmap.SP_MediaStop))
+        self.restart_button.setIcon(self.style().standardIcon(QStyle.StandardPixmap.SP_BrowserReload))
+        self.log_button.setIcon(self.style().standardIcon(QStyle.StandardPixmap.SP_FileDialogContentsView))
+        for button in (self.stop_button, self.restart_button):
+            button.setFixedSize(34, 34)
+            button.setIconSize(QSize(16, 16))
+            button.setCursor(Qt.CursorShape.PointingHandCursor)
+        self.log_button.setFixedSize(66, 34)
+        self.log_button.setIconSize(QSize(15, 15))
+        self.log_button.setCursor(Qt.CursorShape.PointingHandCursor)
+        self.open_button.setFixedSize(82, 34)
+        self.open_button.setIconSize(QSize(15, 15))
+        self.open_button.setCursor(Qt.CursorShape.PointingHandCursor)
         self.open_button.setToolTip(f"Open {app.name}")
         self.stop_button.setToolTip(f"Stop {app.name}")
         self.restart_button.setToolTip(f"Restart {app.name}")
@@ -91,7 +99,7 @@ class AppCard(QFrame):
         self.log_button.clicked.connect(lambda: self.log_clicked.emit(app.id))
 
         header = QHBoxLayout()
-        header.setSpacing(10)
+        header.setSpacing(11)
         header.addWidget(self.icon_label)
         text_box = QVBoxLayout()
         text_box.setSpacing(2)
@@ -109,8 +117,8 @@ class AppCard(QFrame):
         actions.addWidget(self.open_button)
 
         layout = QVBoxLayout(self)
-        layout.setContentsMargins(16, 13, 16, 12)
-        layout.setSpacing(7)
+        layout.setContentsMargins(15, 14, 15, 13)
+        layout.setSpacing(8)
         layout.addLayout(header)
         layout.addWidget(self.description, 1, Qt.AlignmentFlag.AlignTop)
         layout.addLayout(actions)
@@ -139,6 +147,13 @@ class AppCard(QFrame):
         starting = status == ApplicationStatus.STARTING
         running = status == ApplicationStatus.RUNNING
         self.open_button.setText("View" if running else "Open")
+        self.open_button.setIcon(
+            self.style().standardIcon(
+                QStyle.StandardPixmap.SP_DialogOpenButton
+                if running
+                else QStyle.StandardPixmap.SP_MediaPlay
+            )
+        )
         self.open_button.setEnabled(not starting)
         self.stop_button.setVisible(running or starting)
         self.stop_button.setEnabled(running or starting)
