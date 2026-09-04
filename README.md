@@ -15,11 +15,9 @@ A separate Python installation is not required.
 
 ## First-Time Installation
 
-Choose either the mapped drive or UNC path available on the domain PC. For
-example, clone under the mapped `Z:\mycology` folder:
+Clone the repository and run the installer:
 
 ```powershell
-Set-Location "Z:\mycology"
 gh repo clone vinayvaida27/Unified-Pipeline-Launcher
 Set-Location ".\Unified-Pipeline-Launcher"
 .\INSTALL.bat
@@ -42,9 +40,7 @@ You can also open the cloned folder in File Explorer and double-click
 4. Starts the launcher.
 5. Deletes `INSTALL.bat` after a successful installation.
 
-If installation fails, `INSTALL.bat` is kept so it can be run again. On a
-shared network installation, one authorized user with write access performs the
-installation; other users launch the prepared application.
+If installation fails, `INSTALL.bat` is kept so it can be run again.
 
 ## Daily Use
 
@@ -73,22 +69,8 @@ git pull --ff-only origin main
 portable runtime and every recognized virtual environment from the checked-in
 requirements files. Start the launcher again after both commands finish.
 
-Do not make app changes only on the domain PC. Make them in a development
-clone, commit and push them, and then pull them onto the domain PC.
-
-## Domain And Network Drives
-
-The repository works from a mapped path such as
-`Z:\mycology\Unified-Pipeline-Launcher` or the equivalent UNC path. During
-installation, the generated shortcut records the stable UNC location exposed
-by Windows, so a different drive letter does not invalidate the shortcut or
-runtime cache.
-
-Python and app code are cached under
-`%LOCALAPPDATA%\OrganizationName\UnifiedPipelineLauncher` for normal launches;
-the network repository remains the source of truth. Do not hardcode `Z:` inside
-an app because domain mappings can differ between users. Use a UNC path or an
-environment-specific configuration value for shared data.
+Make app changes in a development clone, commit and push them, and then pull
+them into other installations.
 
 ## Add An App
 
@@ -128,8 +110,8 @@ dependency and refresh the runtime:
 .\src\scripts\update_dependencies.ps1 -Target app -AppId my-app -Package "plotly>=5,<6"
 ```
 
-Commit and push the app folder and `apps/apps.json`. On the domain PC, use the
-commands in **Pull Updates**, then restart the launcher.
+Commit and push the app folder and `apps/apps.json`. In other installations,
+use the commands in **Pull Updates**, then restart the launcher.
 
 ## Project Structure
 
