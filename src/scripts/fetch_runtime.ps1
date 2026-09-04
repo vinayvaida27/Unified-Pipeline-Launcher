@@ -55,9 +55,25 @@ Write-Host "Bootstrapping pip..."
 Write-Host "Validating runtime..."
 Assert-LauncherPythonRuntime $Python
 & $Python -I -c "import ssl, subprocess, venv, pip, sys; print('Validated', sys.version)"
-$TestVenv = Join-Path $RuntimeDir "_venv_validation"
-& $Python -m venv $TestVenv
-Remove-Item -LiteralPath $TestVenv -Recurse -Force
+
+# Create the disposable validation venv on the local TEMP volume rather than
+# inside a mapped/UNC runtime. This avoids the benign Python warning where a
+# requested mapped-drive path (for example Z:\...) resolves to its UNC path
+# (for example \\server\share\...) and also avoids unnecessary network I/O.
+$TestVenv = Join-Path $env:TEMP ("usl-venv-validation-{0}-{1}" -f $PID, [guid]::NewGuid().ToString("N"))
+try {
+    & $Python -m venv $TestVenv
+    if ($LASTEXITCODE -ne 0) { throw "Temporary venv validation failed (exit code $LASTEXITCODE)." }
+
+    $TestVenvPython = Join-Path $TestVenv "Scripts\python.exe"
+    if (-not (Test-Path -LiteralPath $TestVenvPython)) {
+        throw "Temporary validation venv does not contain python.exe: $TestVenvPython"
+    }
+    & $TestVenvPython -I -c "import encodings, ssl, subprocess, venv, sys; print('Venv validated', sys.version)"
+    if ($LASTEXITCODE -ne 0) { throw "Temporary venv import validation failed (exit code $LASTEXITCODE)." }
+} finally {
+    Remove-Item -LiteralPath $TestVenv -Recurse -Force -ErrorAction SilentlyContinue
+}
 
 # Record runtime info.
 $RuntimeInfo = Join-Path $RuntimeDir "runtime_info.json"
