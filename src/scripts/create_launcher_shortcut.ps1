@@ -22,6 +22,7 @@ param(
 )
 
 $ErrorActionPreference = "Stop"
+$ReleaseDir = $ReleaseDir.Trim().Trim([char]34)
 
 function ConvertTo-StableNetworkPath {
     param([Parameter(Mandatory=$true)][string]$Path)
@@ -45,9 +46,9 @@ function ConvertTo-StableNetworkPath {
 if ($ReleaseDir -eq "") {
     $ReleaseDir = Split-Path -Parent (Split-Path -Parent $PSScriptRoot)
 }
-$Root = ConvertTo-StableNetworkPath (Resolve-Path $ReleaseDir).Path
+$Root = ConvertTo-StableNetworkPath (Resolve-Path -LiteralPath $ReleaseDir -ErrorAction Stop).Path
 $SourceRoot = Join-Path $Root "src"
-if (-not (Test-Path $SourceRoot)) {
+if (-not (Test-Path -LiteralPath $SourceRoot)) {
     $SourceRoot = $Root
 }
 $LauncherExe = Join-Path $Root "launcher.exe"
@@ -56,8 +57,8 @@ $ShortcutPath = Join-Path $Root "START_LAUNCHER.lnk"
 $LegacyBat = Join-Path $Root "START_LAUNCHER.bat"
 $DebugBat = Join-Path $Root "START_LAUNCHER_DEBUG.bat"
 
-if (Test-Path $LegacyBat) {
-    if (Test-Path $DebugBat) {
+if (Test-Path -LiteralPath $LegacyBat) {
+    if (Test-Path -LiteralPath $DebugBat) {
         Remove-Item -LiteralPath $LegacyBat -Force
         Write-Host "Removed legacy user-facing batch file: $LegacyBat"
     } else {
@@ -66,12 +67,12 @@ if (Test-Path $LegacyBat) {
     }
 }
 
-if (Test-Path $LauncherExe) {
+if (Test-Path -LiteralPath $LauncherExe) {
     $TargetPath = $LauncherExe
     $Arguments = ""
     $WorkingDirectory = $Root
 } else {
-    if (-not (Test-Path $LauncherScript)) {
+    if (-not (Test-Path -LiteralPath $LauncherScript)) {
         throw "Launcher bootstrap not found: $LauncherScript"
     }
     $TargetPath = Join-Path $env:SystemRoot "System32\wscript.exe"
@@ -86,6 +87,10 @@ $Shortcut.Arguments = $Arguments
 $Shortcut.WorkingDirectory = $WorkingDirectory
 $Shortcut.WindowStyle = 7
 $Shortcut.Description = "Unified Pipeline Launcher"
+$LauncherIcon = Join-Path $SourceRoot "assets\launcher\launcher.ico"
+if (Test-Path -LiteralPath $LauncherIcon) {
+    $Shortcut.IconLocation = "`"$LauncherIcon`",0"
+}
 $Shortcut.Save()
 
 Write-Host "Created: $ShortcutPath"

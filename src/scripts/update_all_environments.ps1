@@ -19,23 +19,24 @@ param(
 $ErrorActionPreference = "Stop"
 $SourceRoot = Split-Path -Parent $PSScriptRoot
 $DefaultRoot = Split-Path -Parent $SourceRoot
+$ReleaseDir = $ReleaseDir.Trim().Trim([char]34)
 if ($ReleaseDir -eq "") { $ReleaseDir = $DefaultRoot }
-$Root = (Resolve-Path $ReleaseDir).Path
+$Root = (Resolve-Path -LiteralPath $ReleaseDir -ErrorAction Stop).Path
 $ReleaseSourceRoot = Join-Path $Root "src"
-if (-not (Test-Path $ReleaseSourceRoot)) { $ReleaseSourceRoot = $Root }
+if (-not (Test-Path -LiteralPath $ReleaseSourceRoot)) { $ReleaseSourceRoot = $Root }
 
 $AppsRoot = Join-Path $Root "apps"
 $AppsJson = Join-Path $AppsRoot "apps.json"
 $ConfigPath = Join-Path $ReleaseSourceRoot "config\launcher_config.json"
-if (-not (Test-Path $AppsJson)) { throw "App registry not found: $AppsJson" }
-if (-not (Test-Path $ConfigPath)) { throw "Launcher config not found: $ConfigPath" }
+if (-not (Test-Path -LiteralPath $AppsJson)) { throw "App registry not found: $AppsJson" }
+if (-not (Test-Path -LiteralPath $ConfigPath)) { throw "Launcher config not found: $ConfigPath" }
 
-$Registry = Get-Content $AppsJson -Raw | ConvertFrom-Json
-$Config = Get-Content $ConfigPath -Raw | ConvertFrom-Json
+$Registry = Get-Content -LiteralPath $AppsJson -Raw | ConvertFrom-Json
+$Config = Get-Content -LiteralPath $ConfigPath -Raw | ConvertFrom-Json
 $RequirementsByApp = @{}
 foreach ($App in $Registry.applications) {
     $Requirement = Join-Path $AppsRoot "$($App.folder)\requirements.txt"
-    if (Test-Path $Requirement) { $RequirementsByApp[$App.id] = $Requirement }
+    if (Test-Path -LiteralPath $Requirement) { $RequirementsByApp[$App.id] = $Requirement }
 }
 
 $CacheRoot = [Environment]::ExpandEnvironmentVariables($Config.paths.local_cache_directory)
@@ -53,8 +54,8 @@ function Add-UpdateJob {
         [string]$Python,
         [string]$Requirement = ""
     )
-    if (-not (Test-Path $Python)) { return }
-    $ResolvedPython = (Resolve-Path $Python).Path
+    if (-not (Test-Path -LiteralPath $Python)) { return }
+    $ResolvedPython = (Resolve-Path -LiteralPath $Python).Path
     if (-not $SeenPython.Add($ResolvedPython)) { return }
     $Jobs.Add([pscustomobject]@{ Name = $Name; Python = $ResolvedPython; Requirement = $Requirement })
 }
@@ -63,18 +64,18 @@ $DevRequirement = Join-Path $ReleaseSourceRoot "requirements-dev.txt"
 Add-UpdateJob "repository development environment" (Join-Path $Root ".venv\Scripts\python.exe") $DevRequirement
 Add-UpdateJob "source development environment" (Join-Path $ReleaseSourceRoot ".venv\Scripts\python.exe") $DevRequirement
 
-if (Test-Path $EnvironmentRoot) {
-    foreach ($AppDirectory in Get-ChildItem $EnvironmentRoot -Directory -ErrorAction SilentlyContinue) {
-        foreach ($VersionDirectory in Get-ChildItem $AppDirectory.FullName -Directory -ErrorAction SilentlyContinue) {
+if (Test-Path -LiteralPath $EnvironmentRoot) {
+    foreach ($AppDirectory in Get-ChildItem -LiteralPath $EnvironmentRoot -Directory -ErrorAction SilentlyContinue) {
+        foreach ($VersionDirectory in Get-ChildItem -LiteralPath $AppDirectory.FullName -Directory -ErrorAction SilentlyContinue) {
             $VenvRoot = $VersionDirectory.FullName
-            if (-not (Test-Path (Join-Path $VenvRoot "pyvenv.cfg"))) {
-                if (Test-Path (Join-Path $VenvRoot "Scripts")) {
+            if (-not (Test-Path -LiteralPath (Join-Path $VenvRoot "pyvenv.cfg"))) {
+                if (Test-Path -LiteralPath (Join-Path $VenvRoot "Scripts")) {
                     $DiscoveryFailures.Add("incomplete app environment (missing pyvenv.cfg): $VenvRoot")
                 }
                 continue
             }
             $Python = Join-Path $VenvRoot "Scripts\python.exe"
-            if (-not (Test-Path $Python)) {
+            if (-not (Test-Path -LiteralPath $Python)) {
                 $DiscoveryFailures.Add("incomplete app environment (missing python.exe): $VenvRoot")
                 continue
             }
@@ -102,7 +103,7 @@ foreach ($Failure in $DiscoveryFailures) { $Failures.Add($Failure) }
 $SharedPython = Join-Path $ReleaseSourceRoot "runtime\python.exe"
 Write-Host ""
 Write-Host "[shared runtime] $SharedPython"
-if (Test-Path $SharedPython) {
+if (Test-Path -LiteralPath $SharedPython) {
     if ($DryRun) {
         Write-Host "  PLAN: reinstall and upgrade launcher plus all enabled app requirements"
     } else {
@@ -137,7 +138,7 @@ foreach ($Job in $Jobs) {
         & $Job.Python -m pip install --upgrade pip
         if ($LASTEXITCODE -ne 0) { throw "pip upgrade exited $LASTEXITCODE" }
         if ($Job.Requirement -ne "") {
-            Push-Location (Split-Path -Parent $Job.Requirement)
+            Push-Location -LiteralPath (Split-Path -Parent $Job.Requirement)
             try {
                 & $Job.Python -m pip install --upgrade -r $Job.Requirement
                 if ($LASTEXITCODE -ne 0) { throw "requirements update exited $LASTEXITCODE" }

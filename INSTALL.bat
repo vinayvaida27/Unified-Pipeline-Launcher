@@ -2,9 +2,9 @@
 setlocal
 title Install Unified Pipeline Launcher
 
-set "ROOT=%~dp0"
-set "DEPLOY=%ROOT%src\scripts\deploy_network.ps1"
-set "SHORTCUT=%ROOT%START_LAUNCHER.lnk"
+for %%I in ("%~dp0.") do set "ROOT=%%~fI"
+set "DEPLOY=%ROOT%\src\scripts\deploy_network.ps1"
+set "SHORTCUT=%ROOT%\START_LAUNCHER.lnk"
 
 if not exist "%DEPLOY%" (
     echo ERROR: Installer support file was not found:

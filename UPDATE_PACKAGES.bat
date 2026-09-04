@@ -2,8 +2,8 @@
 setlocal
 title Update Unified Pipeline Launcher Packages
 
-set "ROOT=%~dp0"
-set "UPDATER=%ROOT%src\scripts\update_all_environments.ps1"
+for %%I in ("%~dp0.") do set "ROOT=%%~fI"
+set "UPDATER=%ROOT%\src\scripts\update_all_environments.ps1"
 
 if not exist "%UPDATER%" (
     echo ERROR: Package updater was not found:

@@ -1,5 +1,6 @@
 import json
 import os
+import shutil
 import subprocess
 from pathlib import Path
 
@@ -101,6 +102,36 @@ def test_shortcut_creator_uses_bootstrap_without_terminal(source_root):
     assert "Rename-Item" in script
     assert "ConvertTo-StableNetworkPath" in script
     assert "DisplayRoot" in script
+    assert "$Shortcut.IconLocation" in script
+
+
+@pytest.mark.skipif(os.name != "nt", reason="Windows shortcuts require WScript.Shell")
+def test_shortcut_creator_accepts_quoted_special_character_path(source_root, tmp_path):
+    release = tmp_path / "release [stable], one"
+    icon_dir = release / "src" / "assets" / "launcher"
+    icon_dir.mkdir(parents=True)
+    shutil.copy2(source_root / "assets" / "launcher" / "launcher.ico", icon_dir / "launcher.ico")
+    (release / "START_LAUNCHER.vbs").write_text("WScript.Quit 0\n", encoding="utf-8")
+
+    result = subprocess.run(
+        [
+            "powershell.exe",
+            "-NoProfile",
+            "-ExecutionPolicy",
+            "Bypass",
+            "-File",
+            str(source_root / "scripts" / "create_launcher_shortcut.ps1"),
+            "-ReleaseDir",
+            f'{release}"',
+        ],
+        check=False,
+        capture_output=True,
+        text=True,
+        timeout=20,
+    )
+
+    assert result.returncode == 0, result.stdout + result.stderr
+    assert (release / "START_LAUNCHER.lnk").is_file()
 
 
 def test_vbs_bootstrap_prefers_matching_local_runtime_cache(repo_root):
@@ -202,6 +233,7 @@ def test_double_click_installer_keeps_itself_on_failure_and_deletes_after_succes
     assert deploy_call < failure_guard < self_delete
     assert "INSTALL.bat was kept" in script
     assert "START_LAUNCHER.lnk" in script
+    assert 'for %%I in ("%~dp0.") do set "ROOT=%%~fI"' in script
 
 
 def test_double_click_package_updater_calls_all_environment_updater(repo_root):
@@ -209,6 +241,7 @@ def test_double_click_package_updater_calls_all_environment_updater(repo_root):
     updater = (repo_root / "src" / "scripts" / "update_all_environments.ps1").read_text(encoding="utf-8")
 
     assert "update_all_environments.ps1" in script
+    assert 'for %%I in ("%~dp0.") do set "ROOT=%%~fI"' in script
     assert "prepare_shared_runtime.ps1" in updater
     assert "-Upgrade" in updater
     assert "pyvenv.cfg" in updater
@@ -218,7 +251,7 @@ def test_double_click_package_updater_calls_all_environment_updater(repo_root):
 
 @pytest.mark.skipif(os.name != "nt", reason="double-click package updater is Windows-specific")
 def test_package_updater_dry_run_discovers_without_modifying(repo_root, tmp_path):
-    release = tmp_path / "release"
+    release = tmp_path / "release [stable]"
     cache = tmp_path / "cache"
     (release / "src" / "config").mkdir(parents=True)
     (release / "src" / "runtime").mkdir()
@@ -250,7 +283,7 @@ def test_package_updater_dry_run_discovers_without_modifying(repo_root, tmp_path
             "-File",
             str(repo_root / "src" / "scripts" / "update_all_environments.ps1"),
             "-ReleaseDir",
-            str(release),
+            f'{release}"',
             "-DryRun",
         ],
         cwd=repo_root,
@@ -265,3 +298,24 @@ def test_package_updater_dry_run_discovers_without_modifying(repo_root, tmp_path
     assert "repository development environment" in result.stdout
     assert "app environment demo\\1.0.0" in result.stdout
     assert "PLAN:" in result.stdout
+
+
+def test_launcher_brand_assets_are_real_images(source_root):
+    png = (source_root / "assets" / "launcher" / "launcher.png").read_bytes()
+    ico = (source_root / "assets" / "launcher" / "launcher.ico").read_bytes()
+
+    assert png.startswith(b"\x89PNG\r\n\x1a\n")
+    assert ico.startswith(b"\x00\x00\x01\x00")
+    assert len(png) > 10_000
+    assert len(ico) > 10_000
+
+
+def test_installer_and_runtime_use_launcher_brand(source_root):
+    installer = (source_root / "build_scripts" / "installer.nsis").read_text(encoding="utf-8")
+    runtime = (source_root / "launcher" / "main.py").read_text(encoding="utf-8")
+
+    assert "MUI_ICON" in installer
+    assert "launcher.ico" in installer
+    assert "SetCurrentProcessExplicitAppUserModelID" in runtime
+    assert "setWindowIcon" in runtime
+    assert 'QLoggingCategory.setFilterRules("qt.svg.warning=false")' in runtime

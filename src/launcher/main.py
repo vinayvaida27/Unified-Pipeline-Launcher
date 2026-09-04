@@ -18,6 +18,20 @@ from .process_manager import ProcessManager
 from .runtime_downloader import RuntimeDownloader
 
 LOG = logging.getLogger(__name__)
+WINDOWS_APP_ID = "UnifiedPipelineLauncher.Desktop"
+
+
+def _set_windows_app_id() -> None:
+    """Give Windows a stable identity for taskbar grouping and icons."""
+
+    if sys.platform != "win32":
+        return
+    try:
+        import ctypes
+
+        ctypes.windll.shell32.SetCurrentProcessExplicitAppUserModelID(WINDOWS_APP_ID)
+    except (AttributeError, OSError):
+        LOG.debug("Could not set the Windows application ID", exc_info=True)
 
 
 def should_sync_to_local_cache(config) -> bool:
@@ -88,9 +102,17 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--development", action="store_true")
     args = parser.parse_args(argv)
 
+    _set_windows_app_id()
+
+    from PySide6.QtCore import QLoggingCategory
+    from PySide6.QtGui import QIcon
     from PySide6.QtWidgets import QApplication, QMessageBox
 
+    QLoggingCategory.setFilterRules("qt.svg.warning=false")
     qt_app = QApplication(sys.argv[:1])
+    icon = QIcon(str(installation_root() / "assets" / "launcher" / "launcher.png"))
+    if not icon.isNull():
+        qt_app.setWindowIcon(icon)
 
     try:
         config = load_platform_config(resolve_config_path(args.config))

@@ -34,12 +34,13 @@ param(
 $ErrorActionPreference = "Stop"
 $SourceRoot = Split-Path -Parent $PSScriptRoot
 $PublicRoot = Split-Path -Parent $SourceRoot
+$ReleaseDir = $ReleaseDir.Trim().Trim([char]34)
 if ($ReleaseDir -eq "") {
     $ReleaseDir = $PublicRoot
 }
-$ReleaseDir = (Resolve-Path $ReleaseDir).Path
+$ReleaseDir = (Resolve-Path -LiteralPath $ReleaseDir -ErrorAction Stop).Path
 $ReleaseSourceRoot = Join-Path $ReleaseDir "src"
-if (-not (Test-Path $ReleaseSourceRoot)) {
+if (-not (Test-Path -LiteralPath $ReleaseSourceRoot)) {
     $ReleaseSourceRoot = $ReleaseDir
 }
 
@@ -70,14 +71,14 @@ function Update-RequirementFile {
     }
 
     $Parent = Split-Path -Parent $Path
-    if (-not (Test-Path $Parent)) {
+    if (-not (Test-Path -LiteralPath $Parent)) {
         New-Item -ItemType Directory -Path $Parent | Out-Null
     }
-    if (-not (Test-Path $Path)) {
+    if (-not (Test-Path -LiteralPath $Path)) {
         New-Item -ItemType File -Path $Path | Out-Null
     }
 
-    $Lines = @(Get-Content -Path $Path -ErrorAction SilentlyContinue)
+    $Lines = @(Get-Content -LiteralPath $Path -ErrorAction SilentlyContinue)
     $Updated = $false
     for ($Index = 0; $Index -lt $Lines.Count; $Index++) {
         if ((Normalize-RequirementName $Lines[$Index]) -eq $PackageName) {
@@ -91,7 +92,7 @@ function Update-RequirementFile {
         $Lines += $Spec
     }
 
-    $Lines | Set-Content -Path $Path -Encoding UTF8
+    $Lines | Set-Content -LiteralPath $Path -Encoding UTF8
     Write-Host "Updated requirement: $Path"
 }
 
@@ -104,11 +105,11 @@ function Get-AppRequirementFile {
 
     $AppsRoot = Join-Path $ReleaseDir "apps"
     $AppsJson = Join-Path $AppsRoot "apps.json"
-    if (-not (Test-Path $AppsJson)) {
+    if (-not (Test-Path -LiteralPath $AppsJson)) {
         throw "App registry not found: $AppsJson"
     }
 
-    $Registry = Get-Content $AppsJson -Raw | ConvertFrom-Json
+    $Registry = Get-Content -LiteralPath $AppsJson -Raw | ConvertFrom-Json
     $App = $Registry.applications | Where-Object {
         $_.id -eq $RequestedAppId -or $_.folder -eq $RequestedAppId
     } | Select-Object -First 1
@@ -132,7 +133,7 @@ function Get-AppRequirementFile {
 }
 
 $Python = Join-Path $ReleaseSourceRoot "runtime\python.exe"
-if (-not (Test-Path $Python)) {
+if (-not (Test-Path -LiteralPath $Python)) {
     if ($ReleaseDir -ne $PublicRoot) {
         throw "Runtime not found at $Python. Prepare the runtime in the release folder first."
     }

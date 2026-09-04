@@ -32,7 +32,7 @@ Write-Host "============================================================"
 
 # Step 1: Download Python runtime (skip if already present)
 $Python = Join-Path $SourceRoot "runtime\python.exe"
-if (Test-Path $Python) {
+if (Test-Path -LiteralPath $Python) {
     $Ver = & $Python --version 2>&1
     Write-Host ""
     Write-Host "[1/3] Runtime already present: $Ver  (skipping download)"

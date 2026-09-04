@@ -180,6 +180,14 @@ QLabel#description {
     color: #56635e;
     font-size: 9pt;
 }
+QLabel#appIconFallback {
+    background: #edf2ef;
+    border: 1px solid #d5ded9;
+    border-radius: 6px;
+    color: #34413c;
+    font-size: 13pt;
+    font-weight: 700;
+}
 QLabel#emptyState {
     color: #75817c;
     font-size: 11pt;

@@ -114,6 +114,13 @@ class MainWindow(QMainWindow):
         settings.setToolTip("View launcher settings")
         settings.clicked.connect(lambda: SettingsDialog(self.config, self).exec())
         about.clicked.connect(lambda: show_about(self, self.config.platform_name))
+        brand_icon = self.windowIcon().pixmap(42, 42)
+        if not brand_icon.isNull():
+            brand = QLabel()
+            brand.setFixedSize(44, 44)
+            brand.setAlignment(Qt.AlignmentFlag.AlignCenter)
+            brand.setPixmap(brand_icon)
+            header_layout.addWidget(brand, 0, Qt.AlignmentFlag.AlignVCenter)
         header_layout.addLayout(title_box)
         header_layout.addStretch(1)
         header_layout.addWidget(self.startup_summary, 0, Qt.AlignmentFlag.AlignVCenter)

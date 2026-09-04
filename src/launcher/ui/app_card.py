@@ -44,6 +44,9 @@ class AppCard(QFrame):
                     Qt.TransformationMode.SmoothTransformation,
                 )
             )
+        else:
+            self.icon_label.setObjectName("appIconFallback")
+            self.icon_label.setText(app.name[:1].upper())
         self.title = QLabel(app.name)
         self.title.setObjectName("appTitle")
         self.title.setWordWrap(True)

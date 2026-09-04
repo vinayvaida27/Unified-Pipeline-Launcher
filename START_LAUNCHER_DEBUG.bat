@@ -4,12 +4,12 @@
 :: Use START_LAUNCHER.lnk or START_LAUNCHER.vbs for normal no-console launches.
 :: ============================================================
 
-set ROOT=%~dp0
-set EXE=%ROOT%launcher.exe
-set SRC=%ROOT%src
-if not exist "%SRC%" set SRC=%ROOT%
-set PYTHON=%SRC%\runtime\python.exe
-set CONFIG=%SRC%\config\launcher_config.json
+for %%I in ("%~dp0.") do set "ROOT=%%~fI"
+set "EXE=%ROOT%\launcher.exe"
+set "SRC=%ROOT%\src"
+if not exist "%SRC%" set "SRC=%ROOT%"
+set "PYTHON=%SRC%\runtime\python.exe"
+set "CONFIG=%SRC%\config\launcher_config.json"
 
 if exist "%EXE%" (
     "%EXE%"
