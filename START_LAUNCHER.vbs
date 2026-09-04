@@ -1,6 +1,6 @@
 Option Explicit
 
-Dim fso, shell, root, srcRoot, pythonw, config, command
+Dim fso, shell, root, srcRoot, python, pythonw, config, command, probe, exitCode
 
 Set fso = CreateObject("Scripting.FileSystemObject")
 Set shell = CreateObject("WScript.Shell")
@@ -10,11 +10,12 @@ root = fso.GetParentFolderName(WScript.ScriptFullName)
 srcRoot = fso.BuildPath(root, "src")
 If Not fso.FolderExists(srcRoot) Then srcRoot = root
 
+python = fso.BuildPath(srcRoot, "runtime\python.exe")
 pythonw = fso.BuildPath(srcRoot, "runtime\pythonw.exe")
 config = fso.BuildPath(srcRoot, "config\launcher_config.json")
 
-If Not fso.FileExists(pythonw) Then
-    MsgBox "Python runtime was not found:" & vbCrLf & pythonw & vbCrLf & vbCrLf & _
+If Not fso.FileExists(python) Or Not fso.FileExists(pythonw) Then
+    MsgBox "Python runtime was not found or is incomplete:" & vbCrLf & fso.BuildPath(srcRoot, "runtime") & vbCrLf & vbCrLf & _
            "Run INSTALL.bat or src\scripts\deploy_network.ps1 first.", _
            vbCritical, "Unified Pipeline Launcher"
     WScript.Quit 1
@@ -37,9 +38,23 @@ On Error GoTo 0
 
 shell.CurrentDirectory = srcRoot
 
-' --no-local-cache is intentional for the network-distributed launcher. The
-' verified bundled runtime executes directly instead of copying the complete
-' runtime and every app to LOCALAPPDATA before the window appears.
-command = """" & pythonw & """ -I -m launcher --config """ & config & """ --no-local-cache"
+' Validate the actual runtime before using pythonw.exe. This turns silent
+' startup failures into a useful error message for the user.
+probe = """" & python & """ -I -c ""import encodings; from PySide6.QtWidgets import QApplication; import streamlit"""
+On Error Resume Next
+exitCode = shell.Run(probe, 0, True)
+If Err.Number <> 0 Then
+    MsgBox "The bundled Python runtime could not be started." & vbCrLf & vbCrLf & _
+           "Run START_LAUNCHER_DEBUG.bat for details.", vbCritical, "Unified Pipeline Launcher"
+    WScript.Quit 1
+End If
+On Error GoTo 0
+If exitCode <> 0 Then
+    MsgBox "The bundled Python runtime failed validation (exit code " & exitCode & ")." & vbCrLf & vbCrLf & _
+           "Run START_LAUNCHER_DEBUG.bat for details.", vbCritical, "Unified Pipeline Launcher"
+    WScript.Quit exitCode
+End If
 
+' Direct network execution is intentional. Local caching is opt-in only.
+command = """" & pythonw & """ -I -m launcher --config """ & config & """ --no-local-cache"
 shell.Run command, 0, False
