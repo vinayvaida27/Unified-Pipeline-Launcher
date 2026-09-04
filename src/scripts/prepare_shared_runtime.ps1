@@ -199,9 +199,11 @@ if ($LASTEXITCODE -ne 0) {
 }
 
 # Store a relocatable marker: no absolute release path or requirement paths.
+# Get-LauncherRelativePath is compatible with Windows PowerShell 5.1, unlike
+# [IO.Path]::GetRelativePath(), which exists only on newer .NET runtimes.
 $RequirementSummary = @()
 foreach ($ReqFile in $AllRequirements) {
-    $Relative = [IO.Path]::GetRelativePath($ReleaseDir, $ReqFile)
+    $Relative = Get-LauncherRelativePath -BasePath $ReleaseDir -Path $ReqFile
     $Hash = (Get-FileHash -LiteralPath $ReqFile -Algorithm SHA256).Hash.ToLowerInvariant()
     $RequirementSummary += [pscustomobject]@{ path = $Relative; sha256 = $Hash }
 }
