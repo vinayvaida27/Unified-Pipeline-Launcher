@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import os
+
 import pytest
 
 from launcher.app_discovery import discover_apps
@@ -50,7 +52,6 @@ def test_syncs_runtime_to_local_cache(tmp_path):
     assert cached_python == (tmp_path / "cache" / "runtime" / "current" / "python.exe").resolve()
     assert cached_python.exists()
     assert (cached_python.parent / "Lib" / "module.py").exists()
-    assert (cached_python.parent / ".runtime_source_path.txt").read_text(encoding="utf-8") == str(source_runtime)
 
 
 def test_sync_runtime_refreshes_when_source_changes(tmp_path):
@@ -86,6 +87,21 @@ def test_shared_runtime_marker_avoids_full_source_rescan(tmp_path, monkeypatch):
     second = cache.sync_runtime_to_local_cache(runtime_python)
 
     assert first == second
+
+
+def test_runtime_fingerprint_ignores_equivalent_source_path_aliases(tmp_path):
+    sources = [tmp_path / "mapped-drive" / "runtime", tmp_path / "unc-share" / "runtime"]
+    timestamp = 1_700_000_000_000_000_000
+    for source in sources:
+        source.mkdir(parents=True)
+        python = source / "python.exe"
+        python.write_text("same runtime", encoding="utf-8")
+        os.utime(python, ns=(timestamp, timestamp))
+        (source / ".shared_runtime_ready.json").write_text('{"prepared_at":"same"}\n', encoding="utf-8")
+
+    fingerprints = [LocalCacheManager._runtime_source_fingerprint(source, source / "python.exe") for source in sources]
+
+    assert fingerprints[0] == fingerprints[1]
 
 
 def test_missing_cached_python_forces_runtime_refresh(tmp_path):

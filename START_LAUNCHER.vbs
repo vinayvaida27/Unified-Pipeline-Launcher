@@ -1,7 +1,7 @@
 Option Explicit
 
 Dim fso, shell, root, srcRoot, launcherExe, sourcePythonw, pythonw, config, command
-Dim cacheRoot, cachedPythonw, sourceMarker, cachedMarker, cachedSourcePath
+Dim cacheRoot, cachedPythonw, sourceMarker, cachedMarker
 
 Set fso = CreateObject("Scripting.FileSystemObject")
 Set shell = CreateObject("WScript.Shell")
@@ -22,8 +22,7 @@ If cacheRoot <> "" Then
     cachedPythonw = fso.BuildPath(cacheRoot, "runtime\current\pythonw.exe")
     sourceMarker = fso.BuildPath(srcRoot, "runtime\.shared_runtime_ready.json")
     cachedMarker = fso.BuildPath(cacheRoot, "runtime\current\.shared_runtime_ready.json")
-    cachedSourcePath = fso.BuildPath(cacheRoot, "runtime\current\.runtime_source_path.txt")
-    If fso.FileExists(cachedPythonw) And FilesMatch(sourceMarker, cachedMarker) And FileEqualsText(cachedSourcePath, fso.GetAbsolutePathName(fso.BuildPath(srcRoot, "runtime"))) Then
+    If fso.FileExists(cachedPythonw) And FilesMatch(sourceMarker, cachedMarker) Then
         pythonw = cachedPythonw
     End If
 End If
@@ -57,15 +56,6 @@ Function LocalCacheDirectory(configPath)
     value = Replace(value, "\\", "\")
     value = Replace(value, "/", "\")
     LocalCacheDirectory = shell.ExpandEnvironmentStrings(value)
-End Function
-
-Function FileEqualsText(filePath, expected)
-    Dim handle
-    FileEqualsText = False
-    If Not fso.FileExists(filePath) Then Exit Function
-    Set handle = fso.OpenTextFile(filePath, 1, False)
-    FileEqualsText = (LCase(handle.ReadAll) = LCase(expected))
-    handle.Close
 End Function
 
 Function FilesMatch(firstPath, secondPath)

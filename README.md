@@ -37,6 +37,18 @@ extensions disabled. App servers bind only to `127.0.0.1`, use Streamlit's CORS
 and XSRF protections, and are stopped when the launcher exits. On startup, the
 launcher also removes identity-matched processes left by an earlier crash.
 
+### Domain And Network Drives
+
+The repository can be installed from either a mapped path such as
+`Z:\mycology\Unified-Pipeline-Launcher` or its UNC equivalent. During
+installation, the generated shortcut uses the stable UNC location when Windows
+exposes one, so a changed drive letter does not break it. Python and app code
+are cached under `%LOCALAPPDATA%\OrganizationName\UnifiedPipelineLauncher` for
+normal launches; the network share remains the source of truth.
+
+Use the mapped or UNC path available on that PC. Do not hardcode `Z:` inside an
+app because domain mappings can differ between users.
+
 ## Add An App
 
 Application files live in `apps`. Copy the template:

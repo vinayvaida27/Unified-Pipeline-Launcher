@@ -70,10 +70,6 @@ class LocalCacheManager:
             shutil.copytree(source_runtime_dir, temp_dir, ignore=self._copy_ignore)
             self._force_rmtree(cached_runtime_dir)
             self._safe_replace(temp_dir, cached_runtime_dir)
-            (cached_runtime_dir / ".runtime_source_path.txt").write_text(
-                str(source_runtime_dir),
-                encoding="utf-8",
-            )
             atomic_write_json(
                 marker_path,
                 {
@@ -231,7 +227,6 @@ class LocalCacheManager:
             return LocalCacheManager._fingerprint_directory_metadata(directory)
         stat = runtime_python.stat()
         digest = hashlib.sha256()
-        digest.update(str(directory).casefold().encode("utf-8"))
         digest.update(marker_path.read_bytes())
         digest.update(str(stat.st_size).encode("ascii"))
         digest.update(str(stat.st_mtime_ns).encode("ascii"))

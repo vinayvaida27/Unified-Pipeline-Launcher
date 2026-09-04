@@ -23,10 +23,29 @@ param(
 
 $ErrorActionPreference = "Stop"
 
+function ConvertTo-StableNetworkPath {
+    param([Parameter(Mandatory=$true)][string]$Path)
+
+    $FullPath = [IO.Path]::GetFullPath($Path)
+    $DriveRoot = [IO.Path]::GetPathRoot($FullPath)
+    if ($FullPath.StartsWith("\\") -or $DriveRoot -notmatch "^[A-Za-z]:\\$") {
+        return $FullPath
+    }
+
+    $Drive = Get-PSDrive -Name $DriveRoot.Substring(0, 1) -ErrorAction SilentlyContinue
+    if (-not $Drive -or -not $Drive.DisplayRoot -or -not $Drive.DisplayRoot.StartsWith("\\")) {
+        return $FullPath
+    }
+
+    $RelativePath = $FullPath.Substring($DriveRoot.Length).TrimStart("\")
+    if ($RelativePath -eq "") { return $Drive.DisplayRoot.TrimEnd("\") }
+    return Join-Path $Drive.DisplayRoot $RelativePath
+}
+
 if ($ReleaseDir -eq "") {
     $ReleaseDir = Split-Path -Parent (Split-Path -Parent $PSScriptRoot)
 }
-$Root = (Resolve-Path $ReleaseDir).Path
+$Root = ConvertTo-StableNetworkPath (Resolve-Path $ReleaseDir).Path
 $SourceRoot = Join-Path $Root "src"
 if (-not (Test-Path $SourceRoot)) {
     $SourceRoot = $Root

@@ -99,6 +99,8 @@ def test_shortcut_creator_uses_bootstrap_without_terminal(source_root):
     assert "START_LAUNCHER.bat" in script
     assert "START_LAUNCHER_DEBUG.bat" in script
     assert "Rename-Item" in script
+    assert "ConvertTo-StableNetworkPath" in script
+    assert "DisplayRoot" in script
 
 
 def test_vbs_bootstrap_prefers_matching_local_runtime_cache(repo_root):
@@ -108,6 +110,7 @@ def test_vbs_bootstrap_prefers_matching_local_runtime_cache(repo_root):
     assert ".shared_runtime_ready.json" in script
     assert "FilesMatch" in script
     assert "runtime\\current\\pythonw.exe" in script
+    assert ".runtime_source_path.txt" not in script
 
 
 @pytest.mark.skipif(os.name != "nt", reason="VBScript bootstrap is Windows-specific")
