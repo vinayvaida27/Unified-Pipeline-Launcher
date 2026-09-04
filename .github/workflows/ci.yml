@@ -2,9 +2,9 @@ name: CI
 
 on:
   push:
-    branches: [main, hri]
+    branches: [main, hri, clean_ui]
   pull_request:
-    branches: [main]
+    branches: [main, clean_ui]
 
 jobs:
   windows-tests:
