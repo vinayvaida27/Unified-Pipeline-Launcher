@@ -100,6 +100,11 @@ def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser()
     parser.add_argument("--config", default=None)
     parser.add_argument("--development", action="store_true")
+    parser.add_argument(
+        "--no-local-cache",
+        action="store_true",
+        help="Run directly from the configured runtime/apps without copying them to the local cache.",
+    )
     args = parser.parse_args(argv)
 
     _set_windows_app_id()
@@ -119,7 +124,7 @@ def main(argv: list[str] | None = None) -> int:
         configure_logging(config.paths.local_cache_directory, config.logging)
         process_manager = ProcessManager(cache.logs_dir)
         process_manager.cleanup_stale_processes()
-        sync_to_local_cache = should_sync_to_local_cache(config)
+        sync_to_local_cache = False if args.no_local_cache else should_sync_to_local_cache(config)
 
         if sync_to_local_cache:
             apps = cache.sync_apps_to_local_cache(discover_apps(config.paths.apps_directory))
