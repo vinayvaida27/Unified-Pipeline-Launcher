@@ -13,7 +13,6 @@ from .environment_manager import EnvironmentManager, RuntimeResolver
 from .exceptions import LauncherError, RuntimeNotFoundError
 from .local_cache import LocalCacheManager
 from .logging_setup import configure_logging
-from .path_utils import is_remote_path
 from .process_manager import ProcessManager
 from .runtime_downloader import RuntimeDownloader
 
@@ -35,13 +34,13 @@ def _set_windows_app_id() -> None:
 
 
 def should_sync_to_local_cache(config) -> bool:
-    """Use local execution when configured or when source files are remote."""
+    """Use local caching only when it is explicitly enabled in configuration.
 
-    return (
-        config.runtime.sync_to_local_cache
-        or is_remote_path(config.paths.runtime_python)
-        or is_remote_path(config.paths.apps_directory)
-    )
+    A mapped drive or UNC source is a valid deployment location.  It must not
+    silently trigger a full runtime/app copy before the launcher window appears.
+    """
+
+    return bool(config.runtime.sync_to_local_cache)
 
 
 def installation_root() -> Path:
@@ -71,18 +70,26 @@ def resolve_config_path(raw: str | None) -> Path:
     return installation_root() / "config" / "launcher_config.json"
 
 
-def _download_runtime_with_dialog(config, qt_app):
-    """Download the pinned official runtime while showing progress."""
+def _busy_dialog(config, qt_app, message: str):
+    """Show an indeterminate progress dialog before an expensive operation."""
 
     from PySide6.QtCore import Qt
     from PySide6.QtWidgets import QProgressDialog
 
-    dialog = QProgressDialog("Preparing Python runtime...", "", 0, 0)
+    dialog = QProgressDialog(message, "", 0, 0)
     dialog.setCancelButton(None)
     dialog.setWindowTitle(config.platform_name)
     dialog.setWindowModality(Qt.WindowModality.ApplicationModal)
     dialog.setMinimumDuration(0)
     dialog.show()
+    qt_app.processEvents()
+    return dialog
+
+
+def _download_runtime_with_dialog(config, qt_app):
+    """Download the pinned official runtime while showing progress."""
+
+    dialog = _busy_dialog(config, qt_app, "Preparing Python runtime...")
 
     def progress(message: str) -> None:
         dialog.setLabelText(message)
@@ -117,6 +124,7 @@ def main(argv: list[str] | None = None) -> int:
     if not icon.isNull():
         qt_app.setWindowIcon(icon)
 
+    cache_dialog = None
     try:
         config = load_platform_config(resolve_config_path(args.config))
         cache = LocalCacheManager(config.paths.local_cache_directory)
@@ -124,12 +132,16 @@ def main(argv: list[str] | None = None) -> int:
         configure_logging(config.paths.local_cache_directory, config.logging)
         process_manager = ProcessManager(cache.logs_dir)
         process_manager.cleanup_stale_processes()
-        sync_to_local_cache = False if args.no_local_cache else should_sync_to_local_cache(config)
 
+        sync_to_local_cache = should_sync_to_local_cache(config) and not args.no_local_cache
+        source_apps = discover_apps(config.paths.apps_directory)
         if sync_to_local_cache:
-            apps = cache.sync_apps_to_local_cache(discover_apps(config.paths.apps_directory))
+            cache_dialog = _busy_dialog(config, qt_app, "Updating local application cache...")
+            apps = cache.sync_apps_to_local_cache(source_apps)
+            cache_dialog.setLabelText("Checking launcher runtime...")
+            qt_app.processEvents()
         else:
-            apps = discover_apps(config.paths.apps_directory)
+            apps = source_apps
 
         runtime_resolver = RuntimeResolver(config, development_mode=args.development)
         try:
@@ -137,9 +149,16 @@ def main(argv: list[str] | None = None) -> int:
         except RuntimeNotFoundError:
             if args.development or not config.runtime.download.enabled:
                 raise
+            if cache_dialog is not None:
+                cache_dialog.close()
+                cache_dialog = None
             LOG.info("Bundled runtime missing; downloading pinned official Python runtime")
             runtime_python = _download_runtime_with_dialog(config, qt_app)
+
         if not args.development and sync_to_local_cache:
+            assert cache_dialog is not None
+            cache_dialog.setLabelText("Updating local launcher runtime...")
+            qt_app.processEvents()
             runtime_python = cache.sync_runtime_to_local_cache(runtime_python)
             if cache.runtime_cache_refreshed:
                 runtime_resolver.validate(runtime_python)
@@ -151,6 +170,9 @@ def main(argv: list[str] | None = None) -> int:
             f"{exc}\n\nPlease contact your administrator if the problem persists.",
         )
         return 1
+    finally:
+        if cache_dialog is not None:
+            cache_dialog.close()
 
     env_manager = EnvironmentManager(config, runtime_python)
 
