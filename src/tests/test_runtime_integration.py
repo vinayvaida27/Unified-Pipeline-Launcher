@@ -61,6 +61,8 @@ def test_real_streamlit_process_uses_app_cwd_and_scrubs_python_environment(tmp_p
     psutil = pytest.importorskip("psutil")
     monkeypatch.setenv("PYTHONPATH", "poison-pythonpath")
     monkeypatch.setenv("PYTHONHOME", "poison-pythonhome")
+    monkeypatch.setenv("PYTHONPLATLIBDIR", "poison-stdlib-directory")
+    monkeypatch.setenv("PYTHONSAFEPATH", "1")
     app = _app(
         tmp_path,
         "runtime-probe",
@@ -71,12 +73,22 @@ def test_real_streamlit_process_uses_app_cwd_and_scrubs_python_environment(tmp_p
         state = manager.start(app, _environment(tmp_path, app))
         assert state.process_id
         child = psutil.Process(state.process_id)
-        child_environment = child.environ()
-        assert Path(child.cwd()) == app.app_dir
         assert Path(child.exe()) == Path(sys.executable)
-        assert child_environment.get("PYTHONPATH") is None
-        assert child_environment.get("PYTHONHOME") is None
-        assert child_environment.get("PYTHONNOUSERSITE") == "1"
+        # uv's Windows venv executable is a redirector: its own cwd becomes
+        # TEMP while the actual Python child retains the requested app cwd.
+        processes = [child, *child.children(recursive=True)]
+        app_processes = [
+            process for process in processes
+            if str(app.entrypoint) in process.cmdline() and Path(process.cwd()) == app.app_dir
+        ]
+        assert app_processes, "No executing app process has the requested working directory"
+        for process in app_processes:
+            child_environment = process.environ()
+            assert child_environment.get("PYTHONPATH") is None
+            assert child_environment.get("PYTHONHOME") is None
+            assert child_environment.get("PYTHONPLATLIBDIR") is None
+            assert child_environment.get("PYTHONSAFEPATH") is None
+            assert child_environment.get("PYTHONNOUSERSITE") == "1"
     finally:
         manager.stop_all()
 

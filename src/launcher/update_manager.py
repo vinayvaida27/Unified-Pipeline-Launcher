@@ -3,13 +3,14 @@
 from __future__ import annotations
 
 import hashlib
-import json
+import re
 import shutil
+import tempfile
 from pathlib import Path
 
-from .exceptions import ChecksumValidationError, UpdateError
+from .exceptions import ChecksumValidationError, SecurityValidationError, UpdateError
 from .models import UpdateApplicationEntry, UpdateManifest
-from .path_utils import ensure_within_directory, read_json
+from .path_utils import atomic_write_json, ensure_within_directory, read_json
 
 
 def compare_semver(left: str, right: str) -> int:
@@ -74,25 +75,50 @@ class UpdateManager:
                 raise ChecksumValidationError(f"Checksum failed for {relative}")
 
     def stage_release(self, source: Path, version: str) -> Path:
-        """Copy a release to staging, replacing incomplete prior staging."""
+        """Copy to a private staging directory without deleting another update."""
 
+        staging_root = self._version_path("staging", version).parent
         if not source.exists():
             raise UpdateError(f"Release source unavailable: {source}")
-        staging = self.local_base_dir / "staging" / version
-        if staging.exists():
+        staging_root.mkdir(parents=True, exist_ok=True)
+        staging = Path(tempfile.mkdtemp(prefix=f"{version}.", dir=staging_root))
+        try:
+            # Reject links/junctions that could import files outside the release.
+            for path in source.rglob("*"):
+                ensure_within_directory(path, source)
+            shutil.copytree(source, staging, dirs_exist_ok=True)
+        except Exception:
             shutil.rmtree(staging)
-        shutil.copytree(source, staging)
+            raise
         return staging
 
     def activate_staged_release(self, staging: Path, version: str) -> Path:
-        """Atomically move staged files into the versioned local releases area."""
+        """Move a new version, then atomically select it, retaining old releases."""
 
-        releases = self.local_base_dir / "releases"
-        releases.mkdir(parents=True, exist_ok=True)
-        target = releases / version
+        target = self._version_path("releases", version)
+        staging_root = self._version_path("staging", version).parent
+        try:
+            staging = ensure_within_directory(staging, staging_root)
+        except SecurityValidationError as exc:
+            raise UpdateError("Release must come from the local staging directory") from exc
+        if staging == staging_root or not staging.is_dir():
+            raise UpdateError("A version directory inside local staging is required")
+        target.parent.mkdir(parents=True, exist_ok=True)
         if target.exists():
-            shutil.rmtree(target)
-        staging.replace(target)
+            raise UpdateError(f"Release {version} already exists; use a new version to preserve rollback")
+        staging.rename(target)
         active = self.local_base_dir / "active_version.json"
-        active.write_text(json.dumps({"platform_version": version}, indent=2) + "\n", encoding="utf-8")
+        atomic_write_json(active, {"platform_version": version})
         return target
+
+    def _version_path(self, directory: str, version: str) -> Path:
+        if not re.fullmatch(r"[0-9]+\.[0-9]+\.[0-9]+(?:[-+][0-9A-Za-z]+(?:[.-][0-9A-Za-z]+)*)?", version):
+            raise UpdateError("Release version must be a safe semantic version")
+        try:
+            expected = self.local_base_dir.resolve() / directory / version
+            resolved = ensure_within_directory(expected, self.local_base_dir)
+            if resolved != expected:
+                raise SecurityValidationError("Managed update directories cannot be links or junction aliases")
+            return resolved
+        except SecurityValidationError as exc:
+            raise UpdateError("Release directory escapes its designated cache location") from exc

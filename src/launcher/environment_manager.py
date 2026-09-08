@@ -39,30 +39,59 @@ class RuntimeResolver:
         raise RuntimeNotFoundError(f"Bundled runtime is missing: {runtime_python}")
 
     def validate(self, python_path: Path) -> None:
-        """Validate Python version, venv, pip, SSL, and subprocess support."""
+        """Validate runtime imports and keep production prefixes beside Python."""
 
         if not python_path.exists():
             raise RuntimeNotFoundError(str(python_path))
-        script = "import encodings, ssl, subprocess, venv, pip, sys; print(f'{sys.version_info.major}.{sys.version_info.minor}.{sys.version_info.micro}')"
-        result = subprocess.run(
-            [str(python_path), "-I", "-c", script],
-            capture_output=True,
-            text=True,
-            timeout=20,
-            env=scrubbed_environment(),
+        script = (
+            "import encodings, json, ssl, subprocess, venv, sys; "
+            "print(json.dumps({'version': list(sys.version_info[:3]), "
+            "'paths': [sys.executable, sys.prefix, sys.base_prefix, encodings.__file__]}))"
         )
+        try:
+            result = subprocess.run(
+                [str(python_path), "-I", "-c", script],
+                capture_output=True,
+                text=True,
+                timeout=20,
+                env=scrubbed_environment(),
+            )
+        except (OSError, subprocess.TimeoutExpired) as exc:
+            raise RuntimeValidationError(f"Could not validate Python runtime {python_path}: {exc}") from exc
         if result.returncode != 0:
             raise RuntimeValidationError(result.stderr.strip() or "Runtime validation failed")
-        major, minor, *_ = result.stdout.strip().split(".")
-        if (int(major), int(minor)) < (3, 11) or (int(major), int(minor)) >= (3, 13):
-            raise RuntimeValidationError(f"Unsupported Python version: {result.stdout.strip()}")
+        try:
+            metadata = json.loads(result.stdout)
+            major, minor, patch = metadata["version"]
+            if not all(isinstance(part, int) for part in (major, minor, patch)):
+                raise ValueError("invalid version")
+            paths = metadata["paths"]
+            if len(paths) != 4 or not all(isinstance(path, str) and path for path in paths):
+                raise ValueError("invalid runtime paths")
+        except (KeyError, TypeError, ValueError) as exc:
+            raise RuntimeValidationError(f"Invalid runtime validation output from {python_path}") from exc
+        if (major, minor) < (3, 11) or (major, minor) >= (3, 13):
+            raise RuntimeValidationError(f"Unsupported Python version: {major}.{minor}.{patch}")
+        # A development venv intentionally uses its separately installed base Python.
+        if not self.development_mode:
+            root = os.path.normcase(os.path.realpath(python_path.parent))
+            try:
+                contained = all(os.path.commonpath((root, os.path.normcase(os.path.realpath(path)))) == root for path in paths)
+            except ValueError:
+                contained = False
+            if not contained:
+                raise RuntimeValidationError(
+                    f"Python runtime is not self-contained: {python_path}. "
+                    "Its executable, prefixes and encodings must belong to the installed runtime; "
+                    "ask an administrator to repair the local runtime."
+                )
 
 
 def scrubbed_environment() -> dict[str, str]:
     """Return a child-process environment without system-Python contamination."""
 
     env = os.environ.copy()
-    for variable in ("PYTHONPATH", "PYTHONHOME", "PYTHONSTARTUP", "PYTHONUSERBASE"):
+    for variable in ("PYTHONPATH", "PYTHONHOME", "PYTHONSTARTUP", "PYTHONUSERBASE", "PYTHONPLATLIBDIR", "PYTHONSAFEPATH"):
         env.pop(variable, None)
     env["PYTHONNOUSERSITE"] = "1"
     return env

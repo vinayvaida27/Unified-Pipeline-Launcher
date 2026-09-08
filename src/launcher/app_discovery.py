@@ -77,8 +77,7 @@ def _load_app_manifest_data(app_dir: Path, data: dict) -> ApplicationManifest:
 
     if not entrypoint.is_file():
         raise ManifestValidationError(f"Entrypoint does not exist: {entrypoint}")
-    if not icon.is_file():
-        raise ManifestValidationError(f"Icon does not exist: {icon}")
+    # Icon loading owns missing/malformed-file fallback; keep the valid app visible.
     if not requirements.is_file():
         raise ManifestValidationError(f"Requirements file does not exist: {requirements}")
     display_order = int(_required(data, "display_order"))

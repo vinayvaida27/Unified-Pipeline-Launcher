@@ -51,8 +51,7 @@ def test_malformed_json_raises_configuration_error(tmp_path):
         load_platform_config(path)
 
 
-def test_remote_runtime_uses_local_cache_even_when_opt_in_is_false(config, monkeypatch):
+def test_remote_runtime_does_not_override_explicit_cache_opt_out(config):
     config = replace(config, runtime=replace(config.runtime, sync_to_local_cache=False))
-    monkeypatch.setattr("launcher.main.is_remote_path", lambda path: path == config.paths.runtime_python)
 
-    assert should_sync_to_local_cache(config)
+    assert not should_sync_to_local_cache(config)

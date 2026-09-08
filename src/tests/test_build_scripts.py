@@ -30,7 +30,9 @@ def test_public_repository_layout_is_minimal(repo_root, source_root):
         text=True,
     ).stdout.splitlines()
     assert not any(path.startswith((".agents/", "audit_artifacts/", "src/.autoresearch/")) for path in tracked)
-    assert [path for path in tracked if path.endswith(".md")] == ["AGENTS.md", "README.md"]
+    assert all(path in {"AGENTS.md", "README.md", "CLAUDE.md"}
+               or path.startswith(("docs/ecc/", ".claude/rules/common/", ".claude/rules/python/"))
+               for path in tracked if path.endswith(".md"))
 
     pyproject = (source_root / "pyproject.toml").read_text(encoding="utf-8")
     assert 'name = "unified-pipeline-launcher"' in pyproject
@@ -70,41 +72,31 @@ def test_launcher_dependencies_install_and_validate(source_root):
     assert 'from PySide6.QtWidgets import QApplication; import streamlit' in setup_script
 
 
-def test_vbs_launcher_hides_console_without_hiding_gui(repo_root):
+def test_vbs_launcher_delegates_without_duplicating_python_startup(repo_root):
     script = (repo_root / "START_LAUNCHER.vbs").read_text(encoding="utf-8")
-
     assert "WScript.ScriptFullName" in script
-    assert 'runtime\\pythonw.exe' in script
-    assert '""" -m launcher --config """' in script
-    assert "shell.Run command, 1, False" in script
-    assert "shell.Run command, 0, False" not in script
-    assert "launcher.exe" in script
+    assert "START_LAUNCHER.bat" in script
+    assert "--silent" in script
+    assert "shell.Run(command, 0, True)" in script
+    assert "runtime\\pythonw.exe" not in script
 
 
-def test_debug_batch_is_not_user_facing_launcher(repo_root):
-    assert not (repo_root / "START_LAUNCHER.bat").exists()
-
+def test_debug_batch_delegates_to_canonical_launcher(repo_root):
     script = (repo_root / "START_LAUNCHER_DEBUG.bat").read_text(encoding="utf-8")
-    assert "debug console" in script.lower()
-    assert "START_LAUNCHER.lnk or START_LAUNCHER.vbs" in script
-    assert "python.exe" in script
-    assert "pythonw.exe" not in script
+    assert (repo_root / "START_LAUNCHER.bat").is_file()
+    assert "START_LAUNCHER.bat" in script
+    assert "--debug" in script
+    assert "python.exe" not in script
 
 
 def test_shortcut_creator_uses_bootstrap_without_terminal(source_root):
-    script = (source_root / "scripts" / "create_launcher_shortcut.ps1").read_text(encoding="utf-8")
-
+    script = (source_root / "scripts/create_launcher_shortcut.ps1").read_text(encoding="utf-8")
     assert "START_LAUNCHER.lnk" in script
     assert "START_LAUNCHER.vbs" in script
-    assert "$LauncherScript" in script
+    assert "System32\\wscript.exe" in script
     assert "$Shortcut.WindowStyle = 7" in script
-    assert "Start-Process $ShortcutPath" in script
-    assert "START_LAUNCHER.bat" in script
-    assert "START_LAUNCHER_DEBUG.bat" in script
-    assert "Rename-Item" in script
+    assert "Rename-Item" not in script
     assert "ConvertTo-StableNetworkPath" in script
-    assert "DisplayRoot" in script
-    assert "$Shortcut.IconLocation" in script
 
 
 @pytest.mark.skipif(os.name != "nt", reason="PowerShell path handling is Windows-specific")
@@ -163,51 +155,25 @@ def test_shortcut_creator_accepts_quoted_special_character_path(source_root, tmp
     assert (release / "START_LAUNCHER.lnk").is_file()
 
 
-def test_vbs_bootstrap_prefers_matching_local_runtime_cache(repo_root):
+def test_normal_startup_does_not_implicitly_select_a_cached_runtime(repo_root):
     script = (repo_root / "START_LAUNCHER.vbs").read_text(encoding="utf-8")
-
-    assert "local_cache_directory" in script
-    assert ".shared_runtime_ready.json" in script
-    assert "FilesMatch" in script
-    assert "RuntimeIsSelfContained" in script
-    assert ' -I -c ""import encodings' in script
-    assert '"runtime\\current"' in script
-    assert '"pythonw.exe"' in script
-    assert ".runtime_source_path.txt" not in script
+    batch = (repo_root / "START_LAUNCHER.bat").read_text(encoding="utf-8")
+    assert "local_cache_directory" not in script
+    assert "--no-local-cache" in batch
+    assert "sys.prefix" in batch and "encodings.__file__" in batch
 
 
 @pytest.mark.skipif(os.name != "nt", reason="VBScript bootstrap is Windows-specific")
-def test_vbs_bootstrap_rejects_a_non_executable_cached_runtime(repo_root, tmp_path):
-    script = (repo_root / "START_LAUNCHER.vbs").read_text(encoding="utf-8")
-    script = script.replace("shell.Run command, 1, False", "WScript.Echo pythonw")
-    probe = tmp_path / "START_LAUNCHER.vbs"
-    probe.write_text(script, encoding="utf-8")
+def test_vbs_reports_a_missing_runtime(repo_root, tmp_path):
+    shutil.copy2(repo_root / "START_LAUNCHER.vbs", tmp_path / "START_LAUNCHER.vbs")
+    shutil.copy2(repo_root / "START_LAUNCHER.bat", tmp_path / "START_LAUNCHER.bat")
     (tmp_path / "runtime").mkdir()
-    (tmp_path / "runtime" / "pythonw.exe").touch()
-    marker = '{"prepared_at":"now"}\n'
-    (tmp_path / "runtime" / ".shared_runtime_ready.json").write_text(marker, encoding="utf-8")
-    cache = tmp_path / "cache"
-    cached_runtime = cache / "runtime" / "current"
-    cached_runtime.mkdir(parents=True)
-    (cached_runtime / "pythonw.exe").touch()
-    (cached_runtime / ".shared_runtime_ready.json").write_text(marker, encoding="utf-8")
-    (cached_runtime / ".runtime_source_path.txt").write_text(str(tmp_path / "runtime"), encoding="utf-8")
     (tmp_path / "config").mkdir()
-    (tmp_path / "config" / "launcher_config.json").write_text(
-        json.dumps({"paths": {"local_cache_directory": str(cache).replace("\\", "/")}}),
-        encoding="utf-8",
-    )
-
-    result = subprocess.run(
-        ["cscript.exe", "//nologo", str(probe)],
-        check=False,
-        capture_output=True,
-        text=True,
-        timeout=10,
-    )
-
-    assert result.returncode == 0, result.stdout + result.stderr
-    assert str(tmp_path / "runtime" / "pythonw.exe").lower() in result.stdout.strip().lower()
+    (tmp_path / "config/launcher_config.json").write_text("{}", encoding="utf-8")
+    result = subprocess.run(["cscript.exe", "//nologo", str(tmp_path / "START_LAUNCHER.vbs")],
+                            capture_output=True, timeout=20)
+    assert result.returncode != 0
+    assert b"START_LAUNCHER_DEBUG.bat" in result.stdout
 
 
 def test_release_build_copies_launcher_requirements(source_root):
@@ -235,7 +201,9 @@ def test_release_build_copies_source_apps_into_portable_layout(tmp_path):
     (public_root / "apps").mkdir()
     (public_root / "apps" / "apps.json").write_text('{"applications": []}\n', encoding="utf-8")
     (source_root / "requirements-launcher.txt").write_text("PySide6\n", encoding="utf-8")
-    for name in ("README.md", "LICENSE", "START_LAUNCHER.vbs", "START_LAUNCHER_DEBUG.bat"):
+    (source_root / "scripts").mkdir()
+    (source_root / "scripts" / "prepare_shared_runtime.ps1").write_text("# synthetic\n", encoding="utf-8")
+    for name in ("README.md", "LICENSE", "START_LAUNCHER.bat", "START_LAUNCHER.vbs", "START_LAUNCHER_DEBUG.bat"):
         (public_root / name).write_text(name, encoding="utf-8")
 
     builder.copy_release_files()
@@ -247,6 +215,8 @@ def test_release_build_copies_source_apps_into_portable_layout(tmp_path):
     )
     assert release_config["paths"]["apps_directory"] == "../apps"
     assert builder.release_dir.name == "Unified-Pipeline-Launcher"
+    assert (builder.release_dir / "START_LAUNCHER.bat").is_file()
+    assert (builder.release_dir / "scripts" / "prepare_shared_runtime.ps1").is_file()
 
 
 def test_runtime_preparation_detects_portable_release_layout(source_root):
@@ -279,7 +249,7 @@ def test_double_click_package_updater_calls_all_environment_updater(repo_root):
     assert "pyvenv.cfg" in updater
     assert "uv pip check" in updater
     assert '"pip", "install", "--python"' in updater
-    assert "$Uv venv --clear" in updater
+    assert "$Uv venv --clear" not in updater
 
 
 @pytest.mark.skipif(os.name != "nt", reason="double-click package updater is Windows-specific")

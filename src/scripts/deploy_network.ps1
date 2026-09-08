@@ -85,7 +85,7 @@ if ($LASTEXITCODE -ne 0) {
     throw "Runtime/package validation failed after deployment."
 }
 
-Push-Location $SourceRoot
+Push-Location -LiteralPath $SourceRoot
 try {
     & $Python -c "import launcher; print('      Launcher module validation: OK')"
     if ($LASTEXITCODE -ne 0) {

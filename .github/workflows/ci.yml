@@ -2,9 +2,13 @@ name: CI
 
 on:
   push:
-    branches: [main, hri, clean_ui]
+    branches: [main, hri, clean_ui, ECC]
   pull_request:
-    branches: [main, clean_ui]
+    branches: [main, clean_ui, ECC]
+  workflow_dispatch:
+
+permissions:
+  contents: read
 
 jobs:
   windows-tests:
@@ -34,11 +38,64 @@ jobs:
         run: uv lock --project src --check
 
       - name: Synchronize development dependencies
-        run: uv sync --project src --locked --python ${{ matrix.python-version }}
+        run: uv sync --project src --locked --group verification --link-mode=copy --python ${{ matrix.python-version }}
 
-      - name: Run tests
-        run: uv run --project src --locked --python ${{ matrix.python-version }} pytest src/tests
+      - name: Create evidence directory
+        run: New-Item -ItemType Directory -Force audit_artifacts
+
+      - name: Check Python syntax and correctness lint
+        run: |
+          & .\src\.venv\Scripts\python.exe -m compileall -q src/launcher src/build_scripts src/scripts src/tests
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          & .\src\.venv\Scripts\python.exe -m ruff check --isolated --select E9,F63,F7,F82 src/launcher src/build_scripts src/scripts src/tests
+
+      - name: Run unit and Qt tests with coverage
+        run: |
+          & .\src\.venv\Scripts\python.exe -m coverage run --source=src/launcher,src/build_scripts -m pytest src/tests -m "not integration and not e2e and not performance and not native_windows and not smb" --junitxml=audit_artifacts/unit.xml
+
+      - name: Run local Windows integration and PowerShell 5.1 regressions
+        run: |
+          & .\src\.venv\Scripts\python.exe -m coverage run --append --source=src/launcher,src/build_scripts -m pytest src/tests -m "integration and not e2e and not performance and not native_windows and not smb" --junitxml=audit_artifacts/windows-integration.xml
+
+      - name: Install browser test engines
+        run: .\src\.venv\Scripts\python.exe -m playwright install chromium firefox webkit
+
+      - name: Run synthetic Streamlit browser tests
+        run: |
+          & .\src\.venv\Scripts\python.exe -m coverage run --append --source=src/launcher,src/build_scripts -m pytest src/tests -m e2e --junitxml=audit_artifacts/browser.xml
+
+      - name: Report coverage
+        if: always()
+        run: .\src\.venv\Scripts\python.exe -m coverage xml -o audit_artifacts/coverage.xml
 
       - name: Run public quality gate
-        shell: pwsh
+        shell: powershell
         run: .\src\scripts\public_quality_gate.ps1 -SkipPytest
+
+      - name: Audit locked development dependencies
+        if: matrix.python-version == '3.11'
+        run: |
+          uv export --project src --locked --all-groups --no-emit-project --no-hashes --format requirements-txt --output-file audit_artifacts/verification-requirements.txt
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          & .\src\.venv\Scripts\python.exe -m pip_audit --no-deps --disable-pip -r audit_artifacts/verification-requirements.txt -f json -o audit_artifacts/dependency-audit.json
+
+      - name: Report source security findings and reject high severity findings
+        if: matrix.python-version == '3.11'
+        run: |
+          & .\src\.venv\Scripts\python.exe -m bandit -r src/launcher src/build_scripts -f json -o audit_artifacts/bandit.json --exit-zero
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          $Report = Get-Content -LiteralPath audit_artifacts/bandit.json -Raw | ConvertFrom-Json
+          if ($Report.errors.Count -gt 0) { throw 'Bandit could not scan all requested files.' }
+          if (@($Report.results | Where-Object issue_severity -eq 'HIGH').Count -gt 0) { throw 'High severity source finding requires review.' }
+          # Medium/low findings remain visible in the artifact and require release review.
+
+      - name: Upload test and security evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: windows-evidence-python-${{ matrix.python-version }}
+          path: audit_artifacts/*.*
+          if-no-files-found: warn
+
+      # Corporate mapped/UNC paths, restricted-user access and visible desktop HWND
+      # acceptance require a separate deployment machine. Hosted CI does not claim them.

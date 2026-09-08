@@ -143,23 +143,13 @@ foreach ($Job in $Jobs) {
     try {
         if ($Job.Requirement -eq "project:dev") {
             $EnvironmentPath = Split-Path -Parent (Split-Path -Parent $Job.Python)
-            $PythonVersion = & $Job.Python -I -c "import sys; print(f'{sys.version_info.major}.{sys.version_info.minor}')"
             $PreviousProjectEnvironment = $env:UV_PROJECT_ENVIRONMENT
             try {
                 $env:UV_PROJECT_ENVIRONMENT = $EnvironmentPath
-                & $Uv sync --project $ReleaseSourceRoot --locked --python $Job.Python
-                $NeedsRebuild = $LASTEXITCODE -ne 0
-                if (-not $NeedsRebuild) {
-                    & $Uv pip check --python $Job.Python --no-config
-                    $NeedsRebuild = $LASTEXITCODE -ne 0
-                }
-                if ($NeedsRebuild) {
-                    Write-Warning "The development environment is incomplete; rebuilding it from uv.lock."
-                    & $Uv venv --clear --python $PythonVersion $EnvironmentPath
-                    if ($LASTEXITCODE -ne 0) { throw "development environment rebuild exited $LASTEXITCODE" }
-                    & $Uv sync --project $ReleaseSourceRoot --locked --python $PythonVersion
-                    if ($LASTEXITCODE -ne 0) { throw "development environment sync exited $LASTEXITCODE" }
-                }
+                & $Uv sync --project $ReleaseSourceRoot --locked --python $Job.Python --link-mode=copy
+                # A failed sync is not permission to erase the environment. Keep
+                # it for diagnosis and require an explicit separate rebuild.
+                if ($LASTEXITCODE -ne 0) { throw "development environment sync exited $LASTEXITCODE; automatic destructive rebuild was skipped" }
             } finally {
                 if ($null -eq $PreviousProjectEnvironment) {
                     Remove-Item -LiteralPath "Env:UV_PROJECT_ENVIRONMENT" -ErrorAction SilentlyContinue
@@ -168,7 +158,7 @@ foreach ($Job in $Jobs) {
                 }
             }
         } elseif ($Job.Requirement -ne "") {
-            $InstallArgs = @("pip", "install", "--python", $Job.Python, "--no-config", "--upgrade")
+            $InstallArgs = @("pip", "install", "--python", $Job.Python, "--no-config", "--link-mode=copy", "--upgrade")
             $Wheelhouse = Join-Path (Split-Path -Parent $Job.Requirement) "wheelhouse"
             if (Test-Path -LiteralPath $Wheelhouse) {
                 $Wheels = @(Get-ChildItem -LiteralPath $Wheelhouse -File -ErrorAction SilentlyContinue)

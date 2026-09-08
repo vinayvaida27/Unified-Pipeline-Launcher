@@ -4,6 +4,10 @@ src/.venv/
 *.md
 !/README.md
 !/AGENTS.md
+!/CLAUDE.md
+!/docs/ecc/*.md
+!/.claude/rules/common/*.md
+!/.claude/rules/python/*.md
 .coverage
 __pycache__/
 *.py[cod]
@@ -13,6 +17,9 @@ __pycache__/
 src/.autoresearch/
 audit_artifacts/
 .mypy_cache/
+.ruff_cache/
+htmlcov/
+coverage.xml
 dist/
 build/
 *.spec

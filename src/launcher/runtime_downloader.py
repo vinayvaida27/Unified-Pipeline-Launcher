@@ -9,18 +9,20 @@ downloads the exact CPython version pinned in ``launcher_config.json``
 from __future__ import annotations
 
 import hashlib
-import shutil
+import re
+import stat
 import tempfile
 import zipfile
+from collections.abc import Callable
 from datetime import datetime, timezone
-from pathlib import Path
-from typing import Callable
+from pathlib import Path, PureWindowsPath
 from urllib.error import URLError
+from urllib.parse import urlsplit
 from urllib.request import urlopen
 
-from .exceptions import RuntimeDownloadError
+from .exceptions import RuntimeDownloadError, SecurityValidationError
 from .models import PlatformConfig
-from .path_utils import atomic_write_json, read_json
+from .path_utils import atomic_write_json, ensure_within_directory, read_json
 
 CHUNK_SIZE = 1024 * 256
 
@@ -35,7 +37,16 @@ class RuntimeDownloader:
 
     @property
     def runtime_dir(self) -> Path:
-        return self.downloads_dir / self.download.version
+        if not re.fullmatch(r"[0-9]+\.[0-9]+\.[0-9]+", self.download.version):
+            raise RuntimeDownloadError("Runtime download version must have the form major.minor.patch")
+        try:
+            expected = self.config.paths.local_cache_directory.resolve() / "runtime" / "downloads" / self.download.version
+            resolved = ensure_within_directory(expected, self.config.paths.local_cache_directory)
+            if resolved != expected:
+                raise SecurityValidationError("Downloaded runtime directories cannot be links or junction aliases")
+            return resolved
+        except SecurityValidationError as exc:
+            raise RuntimeDownloadError("Runtime download directory escapes its designated cache location") from exc
 
     @property
     def marker_path(self) -> Path:
@@ -50,10 +61,17 @@ class RuntimeDownloader:
             marker = read_json(self.marker_path)
         except (OSError, ValueError):
             return None
-        if marker.get("sha256") != self.download.sha256:
+        if (
+            marker.get("sha256") != self.download.sha256
+            or marker.get("version") != self.download.version
+            or marker.get("url") != self.download.url
+        ):
             return None
-        python_path = Path(str(marker.get("python_path", "")))
-        return python_path if python_path.is_file() else None
+        try:
+            python_path = ensure_within_directory(Path(str(marker.get("python_path", ""))), self.runtime_dir)
+        except (OSError, ValueError, SecurityValidationError):
+            return None
+        return python_path if python_path.name.lower() == "python.exe" and python_path.is_file() else None
 
     def ensure_runtime(self, progress: Callable[[str], None] | None = None) -> Path:
         """Return a private runtime, downloading it when necessary."""
@@ -90,11 +108,14 @@ class RuntimeDownloader:
         return python_path
 
     def _download_archive(self, progress: Callable[[str], None] | None) -> Path:
+        url = urlsplit(self.download.url)
+        if url.scheme != "https" or not url.hostname:
+            raise RuntimeDownloadError("Runtime downloads require an HTTPS URL")
         self.downloads_dir.mkdir(parents=True, exist_ok=True)
-        handle = tempfile.NamedTemporaryFile(dir=self.downloads_dir, suffix=".download", delete=False)
-        archive_path = Path(handle.name)
+        archive_path = None
         try:
-            with handle:
+            with tempfile.NamedTemporaryFile(dir=self.downloads_dir, suffix=".download", delete=False) as handle:
+                archive_path = Path(handle.name)
                 with urlopen(self.download.url, timeout=60) as response:
                     total = int(response.headers.get("Content-Length") or 0)
                     received = 0
@@ -108,7 +129,8 @@ class RuntimeDownloader:
                             percent = int(received * 100 / total)
                             progress(f"Downloading Python {self.download.version} ({percent}%)")
         except (OSError, URLError) as exc:
-            archive_path.unlink(missing_ok=True)
+            if archive_path is not None:
+                archive_path.unlink(missing_ok=True)
             raise RuntimeDownloadError(
                 "Could not download the Python runtime. Check the network connection and try again."
             ) from exc
@@ -123,29 +145,31 @@ class RuntimeDownloader:
             raise RuntimeDownloadError("Downloaded Python runtime failed SHA-256 verification")
 
     def _extract(self, archive_path: Path) -> Path:
-        staging_dir = self.downloads_dir / f".{self.download.version}.staging"
-        if staging_dir.exists():
-            shutil.rmtree(staging_dir)
-        staging_dir.mkdir(parents=True)
-        try:
-            with zipfile.ZipFile(archive_path) as archive:
-                for member in archive.namelist():
-                    member_path = (staging_dir / member).resolve()
-                    if not str(member_path).startswith(str(staging_dir.resolve())):
-                        raise RuntimeDownloadError("Runtime archive contains unsafe paths")
-                archive.extractall(staging_dir)
-        except zipfile.BadZipFile as exc:
-            shutil.rmtree(staging_dir, ignore_errors=True)
-            raise RuntimeDownloadError("Downloaded Python runtime archive is corrupt") from exc
-        python_path = self._find_python(staging_dir)
-        if python_path is None:
-            shutil.rmtree(staging_dir, ignore_errors=True)
-            raise RuntimeDownloadError("python.exe was not found inside the downloaded runtime archive")
-        if self.runtime_dir.exists():
-            shutil.rmtree(self.runtime_dir)
-        relative = python_path.relative_to(staging_dir)
-        staging_dir.replace(self.runtime_dir)
-        return (self.runtime_dir / relative).resolve()
+        runtime_dir = self.runtime_dir
+        if runtime_dir.exists():
+            raise RuntimeDownloadError("Existing downloaded runtime was preserved; use explicit runtime repair")
+        self.downloads_dir.mkdir(parents=True, exist_ok=True)
+        with tempfile.TemporaryDirectory(prefix=f".{self.download.version}.", dir=self.downloads_dir) as temporary:
+            staging_dir = Path(temporary)
+            try:
+                with zipfile.ZipFile(archive_path) as archive:
+                    for member in archive.infolist():
+                        path = PureWindowsPath(member.filename)
+                        if path.drive or path.root or ".." in path.parts or stat.S_ISLNK(member.external_attr >> 16):
+                            raise RuntimeDownloadError("Runtime archive contains unsafe paths")
+                        ensure_within_directory(staging_dir / member.filename, staging_dir)
+                    archive.extractall(staging_dir)
+            except zipfile.BadZipFile as exc:
+                raise RuntimeDownloadError("Downloaded Python runtime archive is corrupt") from exc
+            except SecurityValidationError as exc:
+                raise RuntimeDownloadError("Runtime archive contains unsafe paths") from exc
+            python_path = self._find_python(staging_dir)
+            if python_path is None:
+                raise RuntimeDownloadError("python.exe was not found inside the downloaded runtime archive")
+            relative = python_path.relative_to(staging_dir)
+            # Renaming into a new version never removes an existing runtime.
+            staging_dir.rename(runtime_dir)
+        return (runtime_dir / relative).resolve()
 
     @staticmethod
     def _find_python(extracted_dir: Path) -> Path | None:

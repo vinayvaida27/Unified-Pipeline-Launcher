@@ -1,14 +1,21 @@
 from __future__ import annotations
 
 import json
+import encodings
+import io
+import os
 import sys
+import subprocess
+from contextlib import redirect_stdout
 from dataclasses import replace
+from pathlib import Path
+from types import ModuleType, SimpleNamespace
 
 import pytest
 
 from launcher.app_discovery import discover_apps
 from launcher.environment_manager import EnvironmentManager, RuntimeResolver
-from launcher.exceptions import DependencyInstallationError
+from launcher.exceptions import DependencyInstallationError, RuntimeValidationError
 from launcher.models import RuntimeConfig
 
 
@@ -182,3 +189,78 @@ def test_ensure_environment_runs_full_flow(temp_config, repo_root, monkeypatch):
     assert marker["app_id"] == app.id
     assert marker["runtime_fingerprint"] == manager.runtime_fingerprint()
     assert "installed_at" in marker
+
+
+@pytest.mark.parametrize(
+    "external_prefix",
+    [r"Z:\Vinay_Vaida\Unified-Pipeline-Launcher\src", r"\\wcsmb\Mycology\Vinay_Vaida\Unified-Pipeline-Launcher\src"],
+    ids=["simulated-mapped", "simulated-unc"],
+)
+def test_runtime_validation_rejects_network_source_prefix(temp_config, tmp_path, monkeypatch, external_prefix):
+    """Execute the actual probe against simulated interpreter metadata; no SMB."""
+    runtime = tmp_path / "local-installed" / "runtime" / "python.exe"
+    runtime.parent.mkdir(parents=True)
+    runtime.touch()
+    monkeypatch.setattr(sys, "executable", str(runtime))
+    monkeypatch.setattr(sys, "prefix", external_prefix)
+    monkeypatch.setattr(sys, "base_prefix", external_prefix)
+    monkeypatch.setattr(encodings, "__file__", str(Path(external_prefix) / "Lib" / "encodings" / "__init__.py"))
+    monkeypatch.setitem(sys.modules, "pip", ModuleType("pip"))
+
+    def execute_probe(command, **kwargs):
+        stdout = io.StringIO()
+        with redirect_stdout(stdout):
+            exec(command[-1], {})
+        return SimpleNamespace(returncode=0, stdout=stdout.getvalue(), stderr="")
+
+    monkeypatch.setattr("launcher.environment_manager.subprocess.run", execute_probe)
+    with pytest.raises(RuntimeValidationError, match="self-contained"):
+        RuntimeResolver(temp_config).validate(runtime)
+
+
+def test_uv_development_runtime_does_not_require_pip(temp_config):
+    RuntimeResolver(temp_config, development_mode=True).validate(Path(sys.executable))
+
+
+@pytest.mark.parametrize("failure", [PermissionError("denied runtime"), subprocess.TimeoutExpired("python", 20)])
+def test_runtime_probe_execution_failure_is_actionable(temp_config, tmp_path, monkeypatch, failure):
+    runtime = tmp_path / "python.exe"
+    runtime.touch()
+
+    def fail(*args, **kwargs):
+        raise failure
+
+    monkeypatch.setattr("launcher.environment_manager.subprocess.run", fail)
+    with pytest.raises(RuntimeValidationError, match="Could not validate"):
+        RuntimeResolver(temp_config).validate(runtime)
+
+
+@pytest.mark.skipif(os.name != "nt", reason="Requires a real Windows directory junction")
+def test_runtime_validation_rejects_stdlib_junction_outside_runtime(temp_config, tmp_path, monkeypatch):
+    runtime = tmp_path / "local-runtime" / "python.exe"
+    runtime.parent.mkdir()
+    runtime.touch()
+    external_lib = tmp_path / "other-source" / "Lib"
+    (external_lib / "encodings").mkdir(parents=True)
+    (external_lib / "encodings" / "__init__.py").write_text("# synthetic stdlib", encoding="utf-8")
+    powershell = Path(os.environ["SystemRoot"]) / "System32/WindowsPowerShell/v1.0/powershell.exe"
+    subprocess.run(
+        [str(powershell), "-NoProfile", "-NonInteractive", "-Command",
+         "New-Item -ItemType Junction -Path $env:ECC_TEST_LINK -Target $env:ECC_TEST_TARGET | Out-Null"],
+        env={**os.environ, "ECC_TEST_LINK": str(runtime.parent / "Lib"), "ECC_TEST_TARGET": str(external_lib)},
+        check=True, capture_output=True,
+    )
+    monkeypatch.setattr(sys, "executable", str(runtime))
+    monkeypatch.setattr(sys, "prefix", str(runtime.parent))
+    monkeypatch.setattr(sys, "base_prefix", str(runtime.parent))
+    monkeypatch.setattr(encodings, "__file__", str(runtime.parent / "Lib" / "encodings" / "__init__.py"))
+
+    def execute_probe(command, **kwargs):
+        stdout = io.StringIO()
+        with redirect_stdout(stdout):
+            exec(command[-1], {})
+        return SimpleNamespace(returncode=0, stdout=stdout.getvalue(), stderr="")
+
+    monkeypatch.setattr("launcher.environment_manager.subprocess.run", execute_probe)
+    with pytest.raises(RuntimeValidationError, match="self-contained"):
+        RuntimeResolver(temp_config).validate(runtime)

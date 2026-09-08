@@ -35,7 +35,7 @@ You can also open the cloned folder in File Explorer and double-click
 `INSTALL.bat`. The installer:
 
 1. Downloads a portable Python runtime.
-2. Installs the launcher and all registered app packages.
+2. Installs the launcher and enabled applications' packages.
 3. Creates `START_LAUNCHER.lnk`.
 4. Starts the launcher.
 5. Deletes `INSTALL.bat` after a successful installation.
@@ -51,13 +51,24 @@ If installation fails, `INSTALL.bat` is kept so it can be run again.
 - Select **Open** for one app or **Open All** for all visible apps.
 - Closing the launcher stops apps that it started.
 
-All three launcher entry points resolve paths from their own installation folder,
-clear inherited Python/Conda environment variables, use the bundled runtime, and
-launch the module with isolated Python startup (`-I -m launcher`). Normal network
-launches execute directly from the verified bundled runtime; they do not copy the
-entire runtime or all application folders into `%LOCALAPPDATA%` before showing the
-launcher window. Local caching remains available only when explicitly enabled in
-configuration.
+`START_LAUNCHER.bat` is the canonical startup implementation. VBS delegates to it
+with `--silent`, the debug BAT delegates with `--debug`, and the shortcut targets
+VBS. The wrappers wait for the launcher and preserve a failing exit status; VBS
+shows an actionable error if startup fails.
+
+Startup resolves paths from the installation folder, clears inherited Python
+configuration, and validates the bundled interpreter's own standard library.
+Source-tree module startup uses `-E -s -m launcher` from the trusted source
+directory. Isolated `-I` probes validate the runtime separately; `-I -m launcher`
+would lose the source directory needed for package discovery.
+
+Normal portable network launches use the verified bundled runtime without
+copying the entire runtime or application tree before showing the window.
+The canonical entrypoints pass `--no-local-cache`. Explicit cache operations
+remain available through configuration/direct invocation. Existing local
+installed deployments keep their runtime local; a network source must never
+become that runtime's Python prefix. Maintenance does not automatically switch
+between these deployment modes.
 
 The launcher opens apps in an isolated Microsoft Edge Guest window with browser
 extensions disabled. App servers bind only to `127.0.0.1`, use Streamlit's CORS
@@ -78,12 +89,30 @@ git pull --ff-only
 
 `git pull` updates the currently checked-out branch without hard-coding `main`.
 `UPDATE_PACKAGES.bat` bootstraps the project's pinned `uv` tool when needed,
-updates the portable runtime and any recognized virtual environments, then
-validates them. The shared-runtime installer uses `uv --link-mode=copy` when the
-runtime is on a mapped/UNC filesystem and rebuilds a damaged runtime when package
-metadata such as `*.dist-info/RECORD` is missing.
+updates the portable runtime and recognized virtual environments, and reports
+failed checks. Maintenance installation requests `--link-mode=copy` so the local
+uv cache also works with mapped/UNC destinations.
+
+Shared-runtime maintenance holds an exclusive updater lock and prepares a
+complete sibling candidate. It validates the candidate, retains the old runtime
+as `runtime.previous-<id>`, activates the replacement, and validates the final
+path. Failed activation attempts restore the prior directory. A missing
+`*.dist-info/RECORD` triggers a fresh Python base and a full requirements install
+inside staging for the selected release. Windows console scripts are generated
+with the final interpreter path so they survive activation.
+
+Close affected apps for every user of a shared deployment and allow space for
+the candidate and retained backups. The two directory moves are not one atomic
+transaction; keep the reported previous-runtime path for recovery. Development
+and app virtual-environment updates still run in place. A failed development
+sync no longer automatically clears and rebuilds that environment.
 
 Start the launcher again after both commands finish.
+
+The `ECC` branch contains the current reliability work. Its
+[release report](docs/ecc/release-report.md) lists executed checks, unresolved
+acceptance work, and a guarded manual update procedure. Local tests do not
+establish corporate SMB or local installed-runtime acceptance.
 
 ## Add An App
 
@@ -162,11 +191,11 @@ environment:
 ```
 
 The script prints the exact test command for its controlled `uv.exe`.
-Developers who already have `uv` on `PATH` can use the standard workflow:
+Developers who already have the pinned `uv` on `PATH` can use the standard workflow:
 
 ```powershell
-uv sync --project .\src --locked
-uv run --project .\src --locked pytest .\src\tests
+uv sync --project .\src --locked --link-mode=copy
+uv run --project .\src --locked --no-sync python -m pytest .\src\tests
 ```
 
 `src/pyproject.toml` defines launcher and development dependencies,
@@ -174,6 +203,23 @@ uv run --project .\src --locked pytest .\src\tests
 `apps/<app>/requirements.txt` remains the source for that app's packages.
 `src/requirements-launcher.txt` is a generated compatibility export used when
 preparing portable shared runtimes.
+
+The optional `verification` group pins coverage, lint, security, browser-test,
+and process-inspection tools. Install it only in the development environment:
+
+```powershell
+$Uv = & .\src\scripts\ensure_uv.ps1
+if ($LASTEXITCODE -ne 0) { throw "Pinned uv setup failed." }
+& $Uv sync --project .\src --locked --group verification --link-mode=copy
+if ($LASTEXITCODE -ne 0) { throw "Verification environment setup failed." }
+& $Uv run --project .\src --locked --no-sync python -m pytest .\src\tests
+```
+
+Offscreen Qt, native Windows entrypoint, and real SMB checks are separate test
+categories. Native acceptance requires a disposable prepared deployment and
+`ECC_ACCEPTANCE_ROOT`; normal hosted CI does not test the corporate share.
+See [AGENTS.md](AGENTS.md) for the authoritative path, data-protection, and
+verification requirements.
 
 Run the public readiness checks from the repository root:
 

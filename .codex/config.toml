@@ -1,0 +1,3 @@
+# ECC workflows are useful here; its browser debugging MCP is unnecessary.
+[plugins."ecc@ecc".mcp_servers.chrome-devtools]
+enabled = false

@@ -34,7 +34,12 @@ def test_ci_runs_supported_windows_python_versions(source_root):
     assert "astral-sh/setup-uv@" in workflow
     assert "uv lock --project src --check" in workflow
     assert "uv sync --project src --locked" in workflow
-    assert "uv run --project src --locked" in workflow
+    assert "--group verification --link-mode=copy" in workflow
+    assert '.\\src\\.venv\\Scripts\\python.exe -m coverage run' in workflow
+    assert 'shell: powershell' in workflow
+    assert 'not native_windows and not smb' in workflow
+    assert 'playwright install chromium firefox webkit' in workflow
+    assert 'pip_audit --no-deps --disable-pip' in workflow
     assert "pytest src/tests" in workflow
     assert "public_quality_gate.ps1" in workflow
 
@@ -42,7 +47,7 @@ def test_ci_runs_supported_windows_python_versions(source_root):
 def test_public_readme_explains_no_rebuild_update(repo_root):
     readme = (repo_root / "README.md").read_text(encoding="utf-8")
 
-    assert "git pull --ff-only origin main" in readme
+    assert "git pull --ff-only" in readme
     assert "update_dependencies.ps1" in readme
     assert "START_LAUNCHER.lnk" in readme
 
@@ -58,7 +63,7 @@ def test_only_approved_root_markdown_is_tracked(repo_root):
         text=True,
     )
 
-    assert set(result.stdout.splitlines()) <= {"AGENTS.md", "README.md", "TEST_AUDIT.md"}
+    assert set(result.stdout.splitlines()) <= {"AGENTS.md", "README.md", "CLAUDE.md"}
 
 
 def test_uv_dependency_files_are_canonical_and_locked(source_root):

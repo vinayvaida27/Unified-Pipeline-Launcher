@@ -34,11 +34,11 @@ def test_rejects_corrupted_file(tmp_path):
 
 def test_preserves_old_version_by_versioned_activation(tmp_path):
     manager = UpdateManager(None, tmp_path)
-    staging1 = tmp_path / "staging1"
-    staging1.mkdir()
+    staging1 = tmp_path / "staging" / "1.0.0"
+    staging1.mkdir(parents=True)
     (staging1 / "a.txt").write_text("one", encoding="utf-8")
     manager.activate_staged_release(staging1, "1.0.0")
-    staging2 = tmp_path / "staging2"
+    staging2 = tmp_path / "staging" / "1.1.0"
     staging2.mkdir()
     (staging2 / "a.txt").write_text("two", encoding="utf-8")
     manager.activate_staged_release(staging2, "1.1.0")

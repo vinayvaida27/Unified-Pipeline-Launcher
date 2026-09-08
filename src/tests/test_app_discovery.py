@@ -39,17 +39,36 @@ def test_rejects_duplicate_ids(copied_apps):
 
 
 def test_handles_missing_icon(copied_apps):
-    (copied_apps / "01_hello_pipeline" / "assets" / "icon.svg").unlink()
+    icon = copied_apps / "01_hello_pipeline" / "assets" / "icon.svg"
+    icon.unlink()
     apps = discover_apps(copied_apps)
-    assert all(app.id != "hello-pipeline" for app in apps)
+    app = next(app for app in apps if app.id == "hello-pipeline")
+    assert app.icon == icon.resolve()
+    assert not app.icon.exists()
+    assert len(apps) == 10
 
 
-def test_rejects_path_traversal(copied_apps):
+@pytest.mark.parametrize("field", ["entrypoint", "icon", "requirements", "wheelhouse"])
+def test_rejects_path_traversal(copied_apps, field):
     data = _load_registry(copied_apps)
-    data["applications"][0]["entrypoint"] = "../../malicious.py"
+    data["applications"][0][field] = "../../malicious.py"
     _write_registry(copied_apps, data)
     apps = discover_apps(copied_apps)
     assert all(app.id != "hello-pipeline" for app in apps)
+
+
+def test_icon_field_remains_required(copied_apps):
+    data = _load_registry(copied_apps)
+    data["defaults"].pop("icon", None)
+    data["applications"][0].pop("icon", None)
+    _write_registry(copied_apps, data)
+    assert all(app.id != "hello-pipeline" for app in discover_apps(copied_apps))
+
+
+@pytest.mark.parametrize("filename", ["app.py", "requirements.txt"])
+def test_missing_required_app_files_still_rejects_application(copied_apps, filename):
+    (copied_apps / "01_hello_pipeline" / filename).unlink()
+    assert all(app.id != "hello-pipeline" for app in discover_apps(copied_apps))
 
 
 def test_skips_disabled_apps(copied_apps):

@@ -3,19 +3,27 @@
 from __future__ import annotations
 
 import hashlib
+import logging
 import os
 import shutil
 import stat
 import subprocess
 import time
+from collections.abc import Callable, Iterator
+from contextlib import contextmanager
 from dataclasses import replace
 from datetime import datetime, timezone
 from pathlib import Path
+from uuid import uuid4
 
 from .constants import STATE_SCHEMA_VERSION
-from .exceptions import RuntimeValidationError
+from .environment_manager import scrubbed_environment
+from .exceptions import RuntimeValidationError, UpdateError
 from .models import ApplicationManifest
 from .path_utils import atomic_write_json, read_json
+
+
+LOG = logging.getLogger(__name__)
 
 
 class LocalCacheManager:
@@ -73,24 +81,23 @@ class LocalCacheManager:
             and self._runtime_is_self_contained(cached_python)
         )
         if not cache_is_current:
-            cached_runtime_dir.parent.mkdir(parents=True, exist_ok=True)
-            temp_dir = cached_runtime_dir.parent / ".current.staging"
-            self._force_rmtree(temp_dir)
-            shutil.copytree(source_runtime_dir, temp_dir, ignore=self._copy_ignore)
-            self._force_rmtree(cached_runtime_dir)
-            self._safe_replace(temp_dir, cached_runtime_dir)
-            if not self._runtime_is_self_contained(cached_python):
-                self._force_rmtree(cached_runtime_dir)
-                raise RuntimeValidationError(f"Copied Python runtime is not self-contained: {cached_python}")
-            atomic_write_json(
-                marker_path,
-                {
-                    "source_path": str(source_runtime_dir),
-                    "source_fingerprint": fingerprint,
-                    "cached_python": str(cached_python),
-                    "cached_at": datetime.now(timezone.utc).isoformat(),
-                },
-            )
+            def validate(directory: Path) -> None:
+                if not self._runtime_is_self_contained(directory / runtime_python.name):
+                    raise RuntimeValidationError(f"Copied Python runtime is not self-contained: {directory}")
+
+            with self._cache_stage(cached_runtime_dir) as temp_dir:
+                shutil.copytree(source_runtime_dir, temp_dir, ignore=self._copy_ignore)
+                validate(temp_dir)
+                atomic_write_json(
+                    temp_dir / marker_path.name,
+                    {
+                        "source_path": str(source_runtime_dir),
+                        "source_fingerprint": fingerprint,
+                        "cached_python": str(cached_python),
+                        "cached_at": datetime.now(timezone.utc).isoformat(),
+                    },
+                )
+                self._activate_cache(temp_dir, cached_runtime_dir, validate)
             self.runtime_cache_refreshed = True
         return cached_python.resolve()
 
@@ -103,17 +110,13 @@ class LocalCacheManager:
             "raise SystemExit(0 if all(os.path.commonpath((root, os.path.normcase(os.path.realpath(path)))) "
             "== root for path in paths) else 86)"
         )
-        env = os.environ.copy()
-        for variable in ("PYTHONPATH", "PYTHONHOME", "PYTHONSTARTUP", "PYTHONUSERBASE"):
-            env.pop(variable, None)
-        env["PYTHONNOUSERSITE"] = "1"
         try:
             result = subprocess.run(
                 [str(python_path), "-I", "-c", probe],
                 stdin=subprocess.DEVNULL,
                 stdout=subprocess.DEVNULL,
                 stderr=subprocess.DEVNULL,
-                env=env,
+                env=scrubbed_environment(),
                 timeout=20,
                 check=False,
             )
@@ -137,24 +140,81 @@ class LocalCacheManager:
         cached_app_dir = self.apps_dir / app.id / app.version
         marker_path = cached_app_dir / ".app_cache_ready.json"
         if not self._cache_marker_matches(marker_path, source_fingerprint, cached_app_dir):
-            cached_app_dir.parent.mkdir(parents=True, exist_ok=True)
-            temp_dir = cached_app_dir.parent / f".{cached_app_dir.name}.staging"
-            self._force_rmtree(temp_dir)
-            shutil.copytree(app.app_dir, temp_dir, ignore=self._copy_ignore)
-            self._force_rmtree(cached_app_dir)
-            self._safe_replace(temp_dir, cached_app_dir)
-            atomic_write_json(
-                marker_path,
-                {
-                    "app_id": app.id,
-                    "app_version": app.version,
-                    "source_path": str(app.app_dir),
-                    "source_fingerprint": source_fingerprint,
-                    "cached_fingerprint": self._fingerprint_directory(cached_app_dir),
-                    "cached_at": datetime.now(timezone.utc).isoformat(),
-                },
-            )
+            with self._cache_stage(cached_app_dir) as temp_dir:
+                shutil.copytree(app.app_dir, temp_dir, ignore=self._copy_ignore)
+                atomic_write_json(
+                    temp_dir / marker_path.name,
+                    {
+                        "app_id": app.id,
+                        "app_version": app.version,
+                        "source_path": str(app.app_dir),
+                        "source_fingerprint": source_fingerprint,
+                        "cached_fingerprint": self._fingerprint_directory(temp_dir),
+                        "cached_at": datetime.now(timezone.utc).isoformat(),
+                    },
+                )
+                self._activate_cache(temp_dir, cached_app_dir)
         return self._with_cached_paths(app, cached_app_dir)
+
+    @contextmanager
+    def _cache_stage(self, destination: Path) -> Iterator[Path]:
+        """Exclude concurrent writers and clean only this update's partial copy."""
+
+        expected = self.base_dir.resolve() / destination.relative_to(self.base_dir)
+        if destination.resolve() != expected:
+            raise UpdateError(f"Cannot update a managed cache path redirected by a junction or symbolic link: {destination}")
+        destination.parent.mkdir(parents=True, exist_ok=True)
+        lock_path = destination.parent / f".{destination.name}.update.lock"
+        try:
+            lock = lock_path.open("x", encoding="utf-8")
+        except FileExistsError as exc:
+            raise UpdateError(
+                f"Cache update is active or was interrupted: {lock_path}. "
+                "Close other launchers; ask an administrator to verify recovery before removing this lock."
+            ) from exc
+        staging = destination.parent / f".{destination.name}.staging.{uuid4().hex}"
+        try:
+            with lock:
+                lock.write(str(os.getpid()))
+                lock.flush()
+                yield staging
+        finally:
+            try:
+                self._force_rmtree(staging)
+            finally:
+                lock_path.unlink()
+
+    def _activate_cache(
+        self, staging: Path, destination: Path, validate: Callable[[Path], None] | None = None
+    ) -> None:
+        """Activate a staged copy, retaining a rollback directory.
+
+        These renames are separate operations. A crash between them leaves the
+        previous directory and update lock for explicit administrator recovery.
+        """
+
+        backup = destination.parent / f".{destination.name}.previous.{uuid4().hex}"
+        had_previous = destination.exists()
+        if had_previous:
+            self._safe_replace(destination, backup)
+        try:
+            self._safe_replace(staging, destination)
+            if validate is not None:
+                validate(destination)
+        except Exception:
+            try:
+                if destination.exists():
+                    self._safe_replace(destination, staging)
+                if had_previous:
+                    self._safe_replace(backup, destination)
+            except OSError as exc:
+                raise UpdateError(
+                    f"Cache activation and rollback failed. Previous cache is preserved at {backup}; "
+                    f"close running apps and restore it to {destination}."
+                ) from exc
+            raise
+        if had_previous:
+            LOG.info("Previous cache retained for rollback: %s", backup)
 
     @property
     def state_path(self) -> Path:

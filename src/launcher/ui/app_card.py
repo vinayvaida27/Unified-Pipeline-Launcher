@@ -2,9 +2,8 @@
 
 from __future__ import annotations
 
-from PySide6.QtCore import QByteArray, QSize, Qt, Signal
+from PySide6.QtCore import QSize, Qt, Signal
 from PySide6.QtGui import QPixmap
-from PySide6.QtSvg import QSvgRenderer
 from PySide6.QtWidgets import (
     QFrame,
     QHBoxLayout,
@@ -16,33 +15,19 @@ from PySide6.QtWidgets import (
 
 from ..models import ApplicationManifest, ApplicationStatus
 from .icons import ui_icon
+from .svg import safe_svg_pixmap
 
 
 def _safe_icon_pixmap(path, size: int = 42) -> QPixmap:
     """Load an application icon without flooding stderr for malformed SVGs.
 
-    SVG data is validated in-memory before QPixmap sees it. Invalid SVGs return
-    a null pixmap so the UI uses the existing letter fallback instead of asking
-    Qt to repeatedly render malformed path data.
+    Invalid and partially accepted SVGs return a null pixmap for the existing
+    letter fallback, with one actionable log warning.
     """
 
     if path.suffix.lower() != ".svg":
         return QPixmap(str(path))
-    try:
-        data = path.read_bytes()
-    except OSError:
-        return QPixmap()
-    renderer = QSvgRenderer(QByteArray(data))
-    if not renderer.isValid():
-        return QPixmap()
-    pixmap = QPixmap(size, size)
-    pixmap.fill(Qt.GlobalColor.transparent)
-    from PySide6.QtGui import QPainter
-
-    painter = QPainter(pixmap)
-    renderer.render(painter)
-    painter.end()
-    return pixmap
+    return safe_svg_pixmap(path, size)
 
 
 class AppCard(QFrame):

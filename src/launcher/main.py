@@ -5,6 +5,7 @@ from __future__ import annotations
 import argparse
 import logging
 import sys
+import time
 from pathlib import Path
 
 from .app_discovery import discover_apps
@@ -78,6 +79,7 @@ def _busy_dialog(config, qt_app, message: str):
 
     dialog = QProgressDialog(message, "", 0, 0)
     dialog.setCancelButton(None)
+    dialog.setWindowFlag(Qt.WindowType.WindowCloseButtonHint, False)
     dialog.setWindowTitle(config.platform_name)
     dialog.setWindowModality(Qt.WindowModality.ApplicationModal)
     dialog.setMinimumDuration(0)
@@ -86,19 +88,50 @@ def _busy_dialog(config, qt_app, message: str):
     return dialog
 
 
-def _download_runtime_with_dialog(config, qt_app):
-    """Download the pinned official runtime while showing progress."""
+def _run_with_progress(config, qt_app, message, operation):
+    """Run startup I/O in the existing worker pool while Qt remains responsive."""
 
-    dialog = _busy_dialog(config, qt_app, "Preparing Python runtime...")
+    from PySide6.QtCore import QEventLoop, QThreadPool, Qt
+    from .ui.workers import Worker
 
-    def progress(message: str) -> None:
-        dialog.setLabelText(message)
-        qt_app.processEvents()
+    dialog = _busy_dialog(config, qt_app, message)
+    loop = QEventLoop()
+    result, errors, domain_errors = [], [], []
+
+    def perform(progress):
+        try:
+            return operation(progress=progress)
+        except LauncherError as exc:
+            domain_errors.append(exc)
+            raise
+
+    worker = Worker(perform)
+    worker.signals.progress.connect(dialog.setLabelText, Qt.ConnectionType.QueuedConnection)
+    worker.signals.finished.connect(result.append, Qt.ConnectionType.QueuedConnection)
+    worker.signals.finished.connect(loop.quit, Qt.ConnectionType.QueuedConnection)
+    worker.signals.failed.connect(lambda message, trace: errors.append((message, trace)), Qt.ConnectionType.QueuedConnection)
+    worker.signals.failed.connect(loop.quit, Qt.ConnectionType.QueuedConnection)
+    started = time.perf_counter()
+    QThreadPool.globalInstance().start(worker)
 
     try:
-        return RuntimeDownloader(config).ensure_runtime(progress=progress)
+        loop.exec()
     finally:
         dialog.close()
+        LOG.info("Startup operation %s took %.3fs", message, time.perf_counter() - started)
+    if errors:
+        LOG.error("Startup worker failed: %s", errors[0][1])
+        if domain_errors:
+            raise domain_errors[0]
+        raise LauncherError(errors[0][0])
+    return result[0]
+
+
+def _download_runtime_with_dialog(config, qt_app):
+    runtime_python = _run_with_progress(config, qt_app, "Preparing Python runtime...", RuntimeDownloader(config).ensure_runtime)
+    _run_with_progress(config, qt_app, "Validating downloaded runtime...",
+                       lambda progress: RuntimeResolver(config).validate(runtime_python))
+    return runtime_python
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -114,6 +147,7 @@ def main(argv: list[str] | None = None) -> int:
     )
     args = parser.parse_args(argv)
 
+    started = time.perf_counter()
     _set_windows_app_id()
 
     from PySide6.QtGui import QIcon
@@ -124,7 +158,6 @@ def main(argv: list[str] | None = None) -> int:
     if not icon.isNull():
         qt_app.setWindowIcon(icon)
 
-    cache_dialog = None
     try:
         config = load_platform_config(resolve_config_path(args.config))
         cache = LocalCacheManager(config.paths.local_cache_directory)
@@ -134,35 +167,39 @@ def main(argv: list[str] | None = None) -> int:
         process_manager.cleanup_stale_processes()
 
         sync_to_local_cache = should_sync_to_local_cache(config) and not args.no_local_cache
+        discovery_started = time.perf_counter()
         source_apps = discover_apps(config.paths.apps_directory)
+        LOG.info("App discovery took %.3fs", time.perf_counter() - discovery_started)
         if sync_to_local_cache:
-            cache_dialog = _busy_dialog(config, qt_app, "Updating local application cache...")
-            apps = cache.sync_apps_to_local_cache(source_apps)
-            cache_dialog.setLabelText("Checking launcher runtime...")
-            qt_app.processEvents()
+            apps = _run_with_progress(config, qt_app, "Updating local application cache...",
+                                      lambda progress: cache.sync_apps_to_local_cache(source_apps))
         else:
             apps = source_apps
 
         runtime_resolver = RuntimeResolver(config, development_mode=args.development)
         try:
-            runtime_python = runtime_resolver.resolve(validate=args.development)
+            validation_started = time.perf_counter()
+            runtime_python = _run_with_progress(config, qt_app, "Checking launcher runtime...",
+                                                lambda progress: runtime_resolver.resolve(validate=True))
+            LOG.info("Runtime validation took %.3fs", time.perf_counter() - validation_started)
         except RuntimeNotFoundError:
             if args.development or not config.runtime.download.enabled:
                 raise
-            if cache_dialog is not None:
-                cache_dialog.close()
-                cache_dialog = None
             LOG.info("Bundled runtime missing; downloading pinned official Python runtime")
             runtime_python = _download_runtime_with_dialog(config, qt_app)
 
         if not args.development and sync_to_local_cache:
-            assert cache_dialog is not None
-            cache_dialog.setLabelText("Updating local launcher runtime...")
-            qt_app.processEvents()
-            runtime_python = cache.sync_runtime_to_local_cache(runtime_python)
+            runtime_python = _run_with_progress(config, qt_app, "Updating local launcher runtime...",
+                                                lambda progress: cache.sync_runtime_to_local_cache(runtime_python))
             if cache.runtime_cache_refreshed:
-                runtime_resolver.validate(runtime_python)
-    except LauncherError as exc:
+                _run_with_progress(config, qt_app, "Validating local runtime...",
+                                   lambda progress: runtime_resolver.validate(runtime_python))
+        env_manager = EnvironmentManager(config, runtime_python)
+        from .ui.main_window import MainWindow
+        window = MainWindow(config, apps, env_manager, process_manager)
+        window.show()
+        LOG.info("First window shown after %.3fs", time.perf_counter() - started)
+    except Exception as exc:
         LOG.exception("Launcher startup failed")
         QMessageBox.critical(
             None,
@@ -170,18 +207,12 @@ def main(argv: list[str] | None = None) -> int:
             f"{exc}\n\nPlease contact your administrator if the problem persists.",
         )
         return 1
+    from PySide6.QtCore import QTimer
+    QTimer.singleShot(0, lambda: LOG.info("First event-loop turn after %.3fs", time.perf_counter() - started))
+    try:
+        result = qt_app.exec()
     finally:
-        if cache_dialog is not None:
-            cache_dialog.close()
-
-    env_manager = EnvironmentManager(config, runtime_python)
-
-    from .ui.main_window import MainWindow
-
-    window = MainWindow(config, apps, env_manager, process_manager)
-    window.show()
-    result = qt_app.exec()
-    if config.launcher.stop_apps_on_exit:
-        process_manager.stop_all()
+        if config.launcher.stop_apps_on_exit:
+            process_manager.stop_all()
     LOG.info("Launcher exited with code %s", result)
     return int(result)

@@ -9,6 +9,7 @@ import threading
 from datetime import datetime, timezone
 from pathlib import Path
 
+from .environment_manager import scrubbed_environment
 from .exceptions import ApplicationStartError, ApplicationStopError
 from .health_checker import HealthChecker
 from .models import ApplicationManifest, ApplicationRuntimeState, ApplicationStatus, EnvironmentState
@@ -57,6 +58,8 @@ class ProcessManager:
 
         with self._lock:
             existing = self._running.get(app.id)
+            if existing and existing.status == ApplicationStatus.STOPPING:
+                raise ApplicationStartError(f"{app.name} is still stopping; retry when it has stopped")
             if existing and existing.process and existing.process.poll() is None:
                 return existing
             self._stop_stale_process(app.id)
@@ -64,10 +67,7 @@ class ProcessManager:
             log_path = self.logs_dir / f"{app.id}.log"
             command = self.build_command(app, env, port)
             creationflags = getattr(subprocess, "CREATE_NO_WINDOW", 0) if sys.platform == "win32" else 0
-            env_vars = os.environ.copy()
-            for variable in ("PYTHONPATH", "PYTHONHOME", "PYTHONSTARTUP", "PYTHONUSERBASE"):
-                env_vars.pop(variable, None)
-            env_vars["PYTHONNOUSERSITE"] = "1"
+            env_vars = scrubbed_environment()
             try:
                 with log_path.open("w", encoding="utf-8") as log_handle:
                     log_handle.write(f"{datetime.now(timezone.utc).isoformat()} Launcher starting {app.name} {app.version}\n")
@@ -102,12 +102,17 @@ class ProcessManager:
             )
             self._running[app.id] = state
         try:
-            self._write_runtime_marker(state, env.python_path)
+            with self._lock:
+                if self._running.get(app.id) is not state or process.poll() is not None:
+                    raise ApplicationStartError(f"{app.name} startup was cancelled")
+                self._write_runtime_marker(state, env.python_path)
             url = self.health_checker.wait_until_healthy(process, port, app.launch.startup_timeout_seconds, log_path)
         except Exception:
-            self.stop(app.id)
+            self._stop_state(state)
             raise
         with self._lock:
+            if self._running.get(app.id) is not state or process.poll() is not None:
+                raise ApplicationStartError(f"{app.name} startup was cancelled")
             state.url = url
             state.status = ApplicationStatus.RUNNING
             return state
@@ -145,13 +150,20 @@ class ProcessManager:
 
         with self._lock:
             state = self._running.get(app_id)
-        if not state or not state.process:
-            return
-        process = state.process
-        state.status = ApplicationStatus.STOPPING
+        if state is not None:
+            self._stop_state(state, timeout_seconds)
+
+    def _stop_state(self, state: ApplicationRuntimeState, timeout_seconds: float = 8) -> None:
+        """Stop only this launch attempt, preserving any replacement's state."""
+
+        with self._lock:
+            if self._running.get(state.app_id) is not state or state.process is None:
+                return
+            process = state.process
+            state.status = ApplicationStatus.STOPPING
         try:
             if process.poll() is None:
-                tree_stopped = self._runtime_marker_matches_process(app_id, process.pid)
+                tree_stopped = self._runtime_marker_matches_process(state.app_id, process.pid)
                 tree_stopped = tree_stopped and self._terminate_process_tree(process.pid)
                 if tree_stopped:
                     process.wait(timeout=5)
@@ -162,13 +174,14 @@ class ProcessManager:
                     except subprocess.TimeoutExpired:
                         process.kill()
                         process.wait(timeout=5)
-        except OSError as exc:
+        except (OSError, subprocess.TimeoutExpired) as exc:
             raise ApplicationStopError(str(exc)) from exc
         finally:
-            self.port_manager.release(state.port)
             with self._lock:
-                self._running.pop(app_id, None)
-            self._remove_runtime_marker(app_id)
+                if process.poll() is not None and self._running.get(state.app_id) is state:
+                    self.port_manager.release(state.port)
+                    self._running.pop(state.app_id, None)
+                    self._remove_runtime_marker(state.app_id)
 
     def restart(self, app: ApplicationManifest, env: EnvironmentState) -> ApplicationRuntimeState:
         """Restart an application."""
@@ -250,7 +263,8 @@ class ProcessManager:
     def _runtime_marker_matches_process(self, app_id: str, pid: int) -> bool:
         try:
             marker = read_json(self._runtime_marker_path(app_id))
-            return int(marker["pid"]) == pid and marker["identity"] == self._process_identity(pid)
+            identity = self._process_identity(pid)
+            return identity is not None and int(marker["pid"]) == pid and marker["identity"] == identity
         except (KeyError, OSError, TypeError, ValueError):
             return False
 

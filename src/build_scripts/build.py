@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import os
 import shutil
 import subprocess
 import sys
@@ -27,9 +28,9 @@ class ExeBuilder:
         self.pyinstaller_dist = self.build_dir / "pyinstaller"
         self.pyinstaller_work = self.build_dir / "pyinstaller-work"
 
-    def run(self, command: list[str]) -> None:
+    def run(self, command: list[str], *, env: dict[str, str] | None = None) -> None:
         print("+", " ".join(command))
-        subprocess.run(command, cwd=self.project_root, check=True)
+        subprocess.run(command, cwd=self.project_root, check=True, env=env)
 
     def clean_previous(self) -> None:
         print("Step 1: Cleaning previous build output")
@@ -49,6 +50,19 @@ class ExeBuilder:
 
     def run_pyinstaller(self, spec_path: Path) -> None:
         print("Step 4: Building launcher.exe")
+        env = {key: value for key, value in os.environ.items() if not key.upper().startswith("PYTHON")}
+        if os.name == "nt":
+            windows = Path(os.environ["SystemRoot"]).resolve()
+            # PyInstaller resolves native dependencies through PATH. Utilities
+            # such as Poppler may supply same-named DLLs with incompatible APIs.
+            # Package hooks supply their own library locations separately.
+            search_paths = dict.fromkeys([
+                Path(sys.executable).resolve().parent,
+                Path(sys.base_prefix).resolve(),
+                windows / "System32",
+                windows,
+            ])
+            env["PATH"] = os.pathsep.join(str(path) for path in search_paths)
         self.run(
             [
                 sys.executable,
@@ -61,7 +75,8 @@ class ExeBuilder:
                 "--workpath",
                 str(self.pyinstaller_work),
                 str(spec_path),
-            ]
+            ],
+            env=env,
         )
 
     def copy_release_files(self) -> None:
@@ -70,7 +85,7 @@ class ExeBuilder:
         if not source_launcher.exists():
             raise FileNotFoundError(f"PyInstaller output was not found: {source_launcher}")
         shutil.copytree(source_launcher, self.release_dir)
-        for name in ("assets", "config", "runtime"):
+        for name in ("assets", "config", "runtime", "scripts"):
             src = self.project_root / name
             dst = self.release_dir / name
             if dst.exists():
@@ -89,7 +104,7 @@ class ExeBuilder:
             src = (self.project_root / name) if name == "requirements-launcher.txt" else (self.public_root / name)
             if src.exists():
                 shutil.copy2(src, self.release_dir / name)
-        for name in ("START_LAUNCHER.vbs", "START_LAUNCHER_DEBUG.bat"):
+        for name in ("START_LAUNCHER.bat", "START_LAUNCHER.vbs", "START_LAUNCHER_DEBUG.bat"):
             src = self.public_root / name
             if src.exists():
                 shutil.copy2(src, self.release_dir / name)
@@ -129,6 +144,7 @@ class ExeBuilder:
         print("Step 7: Verifying release structure")
         required = [
             "launcher.exe",
+            "START_LAUNCHER.bat",
             "START_LAUNCHER.vbs",
             "START_LAUNCHER_DEBUG.bat",
             "requirements-launcher.txt",
@@ -138,6 +154,7 @@ class ExeBuilder:
             "apps/app_template/app.py",
             "assets",
             "runtime",
+            "scripts/prepare_shared_runtime.ps1",
         ]
         missing = [item for item in required if not (self.release_dir / item).exists()]
         if missing:

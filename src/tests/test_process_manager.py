@@ -2,12 +2,14 @@ from __future__ import annotations
 
 import json
 import subprocess
+import threading
+from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 
 import pytest
 
 from launcher.app_discovery import discover_apps
-from launcher.exceptions import ApplicationStartError
+from launcher.exceptions import ApplicationHealthCheckError, ApplicationStartError, ApplicationStopError
 from launcher.models import EnvironmentState
 from launcher.process_manager import ProcessManager
 
@@ -237,3 +239,86 @@ def test_mark_running_ignores_malformed_url(monkeypatch, repo_root, tmp_path):
     manager.start(app, _env(tmp_path))
 
     assert manager.mark_running_from_url(app.id, "http://127.0.0.1:bad") is None
+
+
+@pytest.mark.parametrize("late_result", ["failure", "success"])
+def test_old_startup_completion_cannot_stop_or_replace_restarted_app(monkeypatch, repo_root, tmp_path, late_result):
+    app = discover_apps(repo_root / "apps")[0]
+    environment = _env(tmp_path)
+    first, replacement = FakeProcess(1111), FakeProcess(2222)
+    processes = iter([first, replacement])
+    monkeypatch.setattr("subprocess.Popen", lambda *args, **kwargs: next(processes))
+    manager = ProcessManager(tmp_path)
+    monkeypatch.setattr(manager, "_process_identity", lambda pid: None)
+
+    def health(process, port, *args):
+        if process is first:
+            manager.stop(app.id)
+            manager.start(app, environment)
+            if late_result == "failure":
+                raise ApplicationHealthCheckError("old startup timed out")
+        return f"http://127.0.0.1:{port}"
+
+    monkeypatch.setattr(manager.health_checker, "wait_until_healthy", health)
+    with pytest.raises((ApplicationStartError, ApplicationHealthCheckError)):
+        manager.start(app, environment)
+    assert manager.get(app.id).process is replacement
+    assert not replacement.terminated
+
+
+def test_null_process_identity_never_authorizes_tree_termination(monkeypatch, repo_root, tmp_path):
+    app = discover_apps(repo_root / "apps")[0]
+    fake = FakeProcess()
+    monkeypatch.setattr("subprocess.Popen", lambda *args, **kwargs: fake)
+    manager = ProcessManager(tmp_path, health_checker=FakeHealth())
+    monkeypatch.setattr(manager, "_process_identity", lambda pid: None)
+    manager.start(app, _env(tmp_path))
+    manager._runtime_marker_path(app.id).write_text(json.dumps({"pid": fake.pid, "identity": None}), encoding="utf-8")
+    monkeypatch.setattr(manager, "_terminate_process_tree", lambda pid: pytest.fail("null identity must fail closed"))
+
+    manager.stop(app.id)
+
+    assert fake.terminated
+
+
+def test_failed_stop_keeps_live_process_tracked(monkeypatch, repo_root, tmp_path):
+    app = discover_apps(repo_root / "apps")[0]
+    fake = FakeProcess()
+    monkeypatch.setattr("subprocess.Popen", lambda *args, **kwargs: fake)
+    manager = ProcessManager(tmp_path, health_checker=FakeHealth())
+    monkeypatch.setattr(manager, "_process_identity", lambda pid: None)
+    state = manager.start(app, _env(tmp_path))
+
+    def denied():
+        raise PermissionError("simulated denied stop")
+
+    monkeypatch.setattr(fake, "terminate", denied)
+    with pytest.raises(ApplicationStopError, match="denied stop"):
+        manager.stop(app.id)
+    assert manager.get(app.id) is state
+    assert state in manager.running_states()
+
+
+def test_slow_stop_does_not_block_ui_state_reads(monkeypatch, repo_root, tmp_path):
+    app = discover_apps(repo_root / "apps")[0]
+    fake = FakeProcess()
+    monkeypatch.setattr("subprocess.Popen", lambda *args, **kwargs: fake)
+    manager = ProcessManager(tmp_path, health_checker=FakeHealth())
+    monkeypatch.setattr(manager, "_process_identity", lambda pid: None)
+    state = manager.start(app, _env(tmp_path))
+    stopping, release = threading.Event(), threading.Event()
+
+    def slow_terminate():
+        stopping.set()
+        assert release.wait(5)
+        fake.terminated = True
+
+    monkeypatch.setattr(fake, "terminate", slow_terminate)
+    with ThreadPoolExecutor(max_workers=2) as executor:
+        stop = executor.submit(manager.stop, app.id)
+        try:
+            assert stopping.wait(2)
+            assert executor.submit(manager.running_states).result(timeout=1) == [state]
+        finally:
+            release.set()
+        stop.result(timeout=2)

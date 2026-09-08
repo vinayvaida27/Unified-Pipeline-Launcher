@@ -1,11 +1,14 @@
 from __future__ import annotations
 
 import os
+import subprocess
+from pathlib import Path
 
 import pytest
 
 from launcher.app_discovery import discover_apps
 from launcher.local_cache import LocalCacheManager
+from launcher.exceptions import RuntimeValidationError, UpdateError
 
 
 @pytest.fixture(autouse=True)
@@ -189,3 +192,152 @@ def test_corrupt_cached_app_is_refreshed_from_source(tmp_path, copied_apps):
     refreshed = cache.sync_app_to_local_cache(app)
 
     assert refreshed.entrypoint.read_text(encoding="utf-8") == expected
+
+
+def test_invalid_staged_runtime_preserves_last_usable_runtime(tmp_path, monkeypatch):
+    source = tmp_path / "source runtime [ü]" / "python.exe"
+    source.parent.mkdir()
+    source.write_text("usable runtime", encoding="utf-8")
+    cache = LocalCacheManager(tmp_path / "local-installed")
+    cached = cache.sync_runtime_to_local_cache(source)
+    source.write_text("missing encodings", encoding="utf-8")
+    monkeypatch.setattr(cache, "_runtime_is_self_contained", lambda python: python.read_text() == "usable runtime")
+
+    with pytest.raises(RuntimeValidationError):
+        cache.sync_runtime_to_local_cache(source)
+
+    assert cached.read_text(encoding="utf-8") == "usable runtime"
+
+
+@pytest.mark.parametrize("target", ["runtime", "app"])
+def test_failed_activation_restores_previous_cache(tmp_path, copied_apps, monkeypatch, target):
+    cache = LocalCacheManager(tmp_path / "cache")
+    if target == "runtime":
+        source = tmp_path / "source" / "python.exe"
+        source.parent.mkdir()
+        source.write_text("version 1", encoding="utf-8")
+        sync = lambda: cache.sync_runtime_to_local_cache(source)
+        cached = sync()
+    else:
+        app = discover_apps(copied_apps)[0]
+        source = app.entrypoint
+        sync = lambda: cache.sync_app_to_local_cache(app).entrypoint
+        cached = sync()
+    last_good = cached.read_text(encoding="utf-8")
+    source.write_text(last_good + "\n# changed", encoding="utf-8")
+    replace = cache._safe_replace
+
+    def fail_staged_activation(staged, destination, **kwargs):
+        if ".staging" in staged.name:
+            raise PermissionError("simulated locked activation")
+        replace(staged, destination, **kwargs)
+
+    monkeypatch.setattr(cache, "_safe_replace", fail_staged_activation)
+    with pytest.raises(PermissionError, match="locked activation"):
+        sync()
+    assert cached.read_text(encoding="utf-8") == last_good
+
+
+def test_concurrent_runtime_update_refuses_second_writer(tmp_path, monkeypatch):
+    source = tmp_path / "source" / "python.exe"
+    source.parent.mkdir()
+    source.write_text("version 1", encoding="utf-8")
+    cache = LocalCacheManager(tmp_path / "cache")
+    cached = cache.sync_runtime_to_local_cache(source)
+    source.write_text("version 2", encoding="utf-8")
+    lock = cached.parent.parent / ".current.update.lock"
+    lock.write_text("another writer", encoding="utf-8")
+
+    with pytest.raises(UpdateError, match="update.lock"):
+        cache.sync_runtime_to_local_cache(source)
+
+    assert cached.read_text(encoding="utf-8") == "version 1"
+    assert lock.read_text(encoding="utf-8") == "another writer"
+
+
+def test_runtime_that_fails_after_relocation_rolls_back(tmp_path, monkeypatch):
+    source = tmp_path / "source" / "python.exe"
+    source.parent.mkdir()
+    source.write_text("version 1", encoding="utf-8")
+    cache = LocalCacheManager(tmp_path / "cache")
+    cached = cache.sync_runtime_to_local_cache(source)
+    source.write_text("version 2", encoding="utf-8")
+    monkeypatch.setattr(
+        cache, "_runtime_is_self_contained",
+        lambda python: python.parent.name != "current" or python.read_text() == "version 1",
+    )
+
+    with pytest.raises(RuntimeValidationError):
+        cache.sync_runtime_to_local_cache(source)
+
+    assert cached.read_text(encoding="utf-8") == "version 1"
+    assert not cache.runtime_cache_refreshed
+
+
+def test_successful_runtime_update_retains_previous_for_rollback(tmp_path):
+    source = tmp_path / "source" / "python.exe"
+    source.parent.mkdir()
+    source.write_text("version 1", encoding="utf-8")
+    cache = LocalCacheManager(tmp_path / "cache")
+    cached = cache.sync_runtime_to_local_cache(source)
+    source.write_text("version 2", encoding="utf-8")
+
+    cache.sync_runtime_to_local_cache(source)
+
+    previous = list(cached.parent.parent.glob(".current.previous.*/python.exe"))
+    assert len(previous) == 1
+    assert previous[0].read_text(encoding="utf-8") == "version 1"
+    assert cached.read_text(encoding="utf-8") == "version 2"
+
+
+def test_failed_runtime_marker_write_preserves_previous(tmp_path, monkeypatch):
+    source = tmp_path / "source" / "python.exe"
+    source.parent.mkdir()
+    source.write_text("version 1", encoding="utf-8")
+    cache = LocalCacheManager(tmp_path / "cache")
+    cached = cache.sync_runtime_to_local_cache(source)
+    source.write_text("version 2", encoding="utf-8")
+
+    def fail_marker(*args, **kwargs):
+        raise PermissionError("read-only marker")
+
+    monkeypatch.setattr("launcher.local_cache.atomic_write_json", fail_marker)
+    with pytest.raises(PermissionError, match="read-only marker"):
+        cache.sync_runtime_to_local_cache(source)
+
+    assert cached.read_text(encoding="utf-8") == "version 1"
+    assert not list(cached.parent.parent.glob(".current.staging.*"))
+    assert not list(cached.parent.parent.glob("*.update.lock"))
+
+
+@pytest.mark.skipif(os.name != "nt", reason="Requires a real Windows directory junction")
+@pytest.mark.parametrize("kind", ["runtime", "app"])
+def test_cache_update_rejects_parent_junction_into_protected_cache_tree(tmp_path, copied_apps, kind):
+    cache = LocalCacheManager(tmp_path / "cache")
+    protected = cache.base_dir / "user-files"
+    if kind == "runtime":
+        source = tmp_path / "source" / "python.exe"
+        source.parent.mkdir()
+        source.write_text("synthetic runtime", encoding="utf-8")
+        victim = protected / "current"
+        link = cache.runtime_dir
+        sync = lambda: cache.sync_runtime_to_local_cache(source)
+    else:
+        app = discover_apps(copied_apps)[0]
+        victim = protected / app.id / app.version
+        link = cache.apps_dir
+        sync = lambda: cache.sync_app_to_local_cache(app)
+    victim.mkdir(parents=True)
+    (victim / "keep.txt").write_text("protected user contents", encoding="utf-8")
+    powershell = Path(os.environ["SystemRoot"]) / "System32/WindowsPowerShell/v1.0/powershell.exe"
+    subprocess.run(
+        [str(powershell), "-NoProfile", "-NonInteractive", "-Command",
+         "New-Item -ItemType Junction -Path $env:ECC_TEST_LINK -Target $env:ECC_TEST_TARGET | Out-Null"],
+        env={**os.environ, "ECC_TEST_LINK": str(link), "ECC_TEST_TARGET": str(protected)},
+        check=True, capture_output=True,
+    )
+
+    with pytest.raises(UpdateError, match="managed cache"):
+        sync()
+
+    assert (victim / "keep.txt").read_text(encoding="utf-8") == "protected user contents"
