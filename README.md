@@ -1,7 +1,18 @@
+<p align="center">
+  <img src="src/assets/launcher/launcher.png" alt="Unified Pipeline Launcher logo" width="160">
+</p>
+
 # Unified Pipeline Launcher
 
 Unified Pipeline Launcher is a Windows desktop application for starting,
 viewing, restarting, and stopping local Streamlit applications from one screen.
+
+> **Open source:** released under the [MIT License](LICENSE). Contributions are
+> welcome; see [CONTRIBUTING.md](CONTRIBUTING.md),
+> [CODE_OF_CONDUCT.md](CODE_OF_CONDUCT.md), and [SECURITY.md](SECURITY.md).
+
+This repository contains public demonstration applications only. Do not commit
+laboratory, patient, credential, or other sensitive data.
 
 ## Requirements
 
@@ -226,3 +237,20 @@ Run the public readiness checks from the repository root:
 ```powershell
 .\src\scripts\public_quality_gate.ps1
 ```
+
+## Contributing
+
+Please start with [CONTRIBUTING.md](CONTRIBUTING.md). Pull requests should keep
+the public apps and documentation free of sensitive data, include focused tests
+for behavior changes, and preserve the documented runtime/path constraints.
+
+## Security
+
+Report a possible vulnerability privately using the process in
+[SECURITY.md](SECURITY.md). Do not open a public issue containing credentials,
+patient data, or an exploitable proof of concept.
+
+## License
+
+Copyright © 2026 vinayvaida27. This project is licensed under the
+[MIT License](LICENSE).

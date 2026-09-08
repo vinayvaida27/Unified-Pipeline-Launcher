@@ -63,7 +63,14 @@ def test_only_approved_root_markdown_is_tracked(repo_root):
         text=True,
     )
 
-    assert set(result.stdout.splitlines()) <= {"AGENTS.md", "README.md", "CLAUDE.md"}
+    assert set(result.stdout.splitlines()) <= {
+        "AGENTS.md",
+        "README.md",
+        "CLAUDE.md",
+        "CONTRIBUTING.md",
+        "CODE_OF_CONDUCT.md",
+        "SECURITY.md",
+    }
 
 
 def test_uv_dependency_files_are_canonical_and_locked(source_root):

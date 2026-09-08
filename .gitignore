@@ -5,6 +5,9 @@ src/.venv/
 !/README.md
 !/AGENTS.md
 !/CLAUDE.md
+!/CONTRIBUTING.md
+!/CODE_OF_CONDUCT.md
+!/SECURITY.md
 !/docs/ecc/*.md
 !/.claude/rules/common/*.md
 !/.claude/rules/python/*.md
