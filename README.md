@@ -193,6 +193,10 @@ Unified-Pipeline-Launcher/
 
 ## Development
 
+To convert an existing Python script into a launcher-managed Streamlit app, use
+[SKILL.md](SKILL.md). It requires a concise five-question intake covering input,
+output, workflow, parameters, and app/privacy details before code is changed.
+
 Run the setup script once. It installs the pinned `uv` tool into the launcher's
 local tools directory and synchronizes the locked Python 3.11/3.12 development
 environment:

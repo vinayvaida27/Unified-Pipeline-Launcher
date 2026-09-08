@@ -67,6 +67,7 @@ def test_only_approved_root_markdown_is_tracked(repo_root):
         "AGENTS.md",
         "README.md",
         "CLAUDE.md",
+        "SKILL.md",
         "CONTRIBUTING.md",
         "CODE_OF_CONDUCT.md",
         "SECURITY.md",

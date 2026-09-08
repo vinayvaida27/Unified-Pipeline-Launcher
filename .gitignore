@@ -5,6 +5,7 @@ src/.venv/
 !/README.md
 !/AGENTS.md
 !/CLAUDE.md
+!/SKILL.md
 !/CONTRIBUTING.md
 !/CODE_OF_CONDUCT.md
 !/SECURITY.md
