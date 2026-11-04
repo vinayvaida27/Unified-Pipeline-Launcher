@@ -22,6 +22,10 @@ pushd "%SRC%" || goto inaccessible_source
 if errorlevel 1 goto invalid_runtime
 "%PYTHON%" -I -c "from PySide6.QtWidgets import QApplication; import streamlit"
 if errorlevel 1 goto invalid_runtime
+if not exist "%EXE%" (
+  "%PYTHON%" -E -s -c "import launcher"
+  if errorlevel 1 goto invalid_source
+)
 if exist "%EXE%" (
   start "" /wait "%EXE%" --config "%CONFIG%" --no-local-cache
 ) else if "%DEBUG%"=="1" (
@@ -46,6 +50,9 @@ echo ERROR: Cannot access launcher source folder: %SRC%
 goto failed
 :invalid_runtime
 echo ERROR: Bundled runtime validation failed.
+goto failed
+:invalid_source
+echo ERROR: Launcher source package could not be imported.
 :failed
 if "%SILENT%"=="0" pause
 exit /b 1

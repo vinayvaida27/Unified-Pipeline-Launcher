@@ -46,8 +46,8 @@ def test_vbs_launcher_runs_pythonw_hidden(repo_root):
     script = (repo_root / "START_LAUNCHER.vbs").read_text(encoding="utf-8")
 
     assert "WScript.ScriptFullName" in script
-    assert 'runtime\\pythonw.exe' in script
-    assert '""" -m launcher --config """' in script
+    assert "START_LAUNCHER.bat" in script
+    assert "--silent" in script
     assert "shell.Run command, 0, False" in script
     assert "launcher.exe" in script
 
@@ -59,9 +59,8 @@ def test_debug_batch_is_not_user_facing_launcher(repo_root):
 
     script = (repo_root / "START_LAUNCHER_DEBUG.bat").read_text(encoding="utf-8")
     assert "debug console" in script.lower()
-    assert "START_LAUNCHER.lnk or START_LAUNCHER.vbs" in script
-    assert "python.exe" in script
-    assert "pythonw.exe" not in script
+    assert "START_LAUNCHER.bat" in script
+    assert "--debug" in script
 
 
 def test_shortcut_creator_uses_pythonw_without_terminal(source_root):
