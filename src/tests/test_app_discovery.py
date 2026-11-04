@@ -55,3 +55,26 @@ def test_skips_disabled_apps(copied_apps):
     _write_registry(copied_apps, data)
     apps = discover_apps(copied_apps)
     assert len(apps) == 9
+
+
+def test_discovers_direct_python_path_without_optional_files(copied_apps, tmp_path):
+    entrypoint = tmp_path / "external_pipeline.py"
+    entrypoint.write_text("import streamlit as st\nst.write('external')\n", encoding="utf-8")
+    data = _load_registry(copied_apps)
+    data["applications"].append(
+        {
+            "id": "external-pipeline",
+            "path": str(entrypoint),
+            "name": "External Pipeline",
+            "version": "1.0.0",
+            "description": "A Streamlit file outside the apps directory.",
+            "category": "External",
+            "display_order": 11,
+        }
+    )
+    _write_registry(copied_apps, data)
+
+    app = next(app for app in discover_apps(copied_apps) if app.id == "external-pipeline")
+    assert app.entrypoint == entrypoint.resolve()
+    assert app.requirements is None
+    assert app.icon.name == "launcher.png"

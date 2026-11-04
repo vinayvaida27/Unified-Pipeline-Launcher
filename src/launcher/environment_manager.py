@@ -86,8 +86,10 @@ class EnvironmentManager:
     def marker_path_for(self, environment_path: Path) -> Path:
         return environment_path / ".environment_ready.json"
 
-    def requirements_hash(self, requirements_path: Path) -> str:
+    def requirements_hash(self, requirements_path: Path | None) -> str:
         """Return SHA-256 for requirements file."""
+        if requirements_path is None:
+            return "none"
         digest = hashlib.sha256()
         digest.update(requirements_path.read_bytes())
         return digest.hexdigest()
@@ -123,7 +125,8 @@ class EnvironmentManager:
         command = [str(venv_python), "-m", "pip", "install"]
         if self.config.runtime.offline_install_preferred and app.wheelhouse.exists() and any(app.wheelhouse.iterdir()):
             command.extend(["--no-index", "--find-links", str(app.wheelhouse)])
-        command.extend(["-r", str(app.requirements)])
+        if app.requirements is not None:
+            command.extend(["-r", str(app.requirements)])
         return command
 
     def _run_logged(self, command: list[str], log_handle, timeout_seconds: int, failure_message: str, error_cls) -> None:
@@ -196,13 +199,16 @@ class EnvironmentManager:
             )
             if progress:
                 progress("Installing dependencies")
-            self._run_logged(
-                self.pip_install_command(app, venv_python),
-                log_handle,
-                self.PIP_TIMEOUT_SECONDS,
-                "Dependency installation failed",
-                DependencyInstallationError,
-            )
+            if app.requirements is not None:
+                self._run_logged(
+                    self.pip_install_command(app, venv_python),
+                    log_handle,
+                    self.PIP_TIMEOUT_SECONDS,
+                    "Dependency installation failed",
+                    DependencyInstallationError,
+                )
+            elif progress:
+                progress("Using existing packages")
             if progress:
                 progress("Validating environment")
             self._run_logged(

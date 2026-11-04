@@ -233,15 +233,19 @@ class LocalCacheManager:
 
     @staticmethod
     def _with_cached_paths(app: ApplicationManifest, cached_app_dir: Path) -> ApplicationManifest:
-        entrypoint_relative = app.entrypoint.relative_to(app.app_dir)
-        icon_relative = app.icon.relative_to(app.app_dir)
-        requirements_relative = app.requirements.relative_to(app.app_dir)
-        wheelhouse_relative = app.wheelhouse.relative_to(app.app_dir)
+        def cached_path(path: Path | None) -> Path | None:
+            if path is None:
+                return None
+            try:
+                return (cached_app_dir / path.relative_to(app.app_dir)).resolve()
+            except ValueError:
+                return path
+
         return replace(
             app,
             app_dir=cached_app_dir.resolve(),
-            entrypoint=(cached_app_dir / entrypoint_relative).resolve(),
-            icon=(cached_app_dir / icon_relative).resolve(),
-            requirements=(cached_app_dir / requirements_relative).resolve(),
-            wheelhouse=(cached_app_dir / wheelhouse_relative).resolve(),
+            entrypoint=cached_path(app.entrypoint),
+            icon=cached_path(app.icon),
+            requirements=cached_path(app.requirements),
+            wheelhouse=cached_path(app.wheelhouse),
         )

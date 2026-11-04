@@ -191,6 +191,26 @@ JSON cannot contain comments, so the field-by-field commented example lives in
 [`apps/apps.template.jsonc`](apps/apps.template.jsonc). Copy its shape into
 `apps/apps.json` while keeping the file valid JSON.
 
+An app does not need a folder under `apps`. Use `path` for a direct Streamlit
+file path (absolute, or relative to `apps/` or the repository parent):
+
+```json
+{
+  "id": "my-external-app",
+  "path": "D:/shared/pipelines/my_app.py",
+  "name": "Shared Pipeline",
+  "version": "1.0.0",
+  "description": "A Streamlit file stored outside this repository.",
+  "category": "External",
+  "display_order": 12
+}
+```
+
+For direct files, `requirements` and `icon` are optional. If omitted or
+missing, the launcher uses the existing runtime packages and the Unified
+Pipeline Launcher icon. The file must still be a real `.py` file; the same
+loopback binding, process supervision, and isolated browser rules apply.
+
 Bump `version` whenever the app's dependencies or behavior changes. To add a
 dependency and refresh the runtime:
 

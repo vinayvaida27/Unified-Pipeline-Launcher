@@ -9,7 +9,7 @@ from pathlib import Path
 from .constants import DEFAULT_ADDRESS, SUPPORTED_APP_TYPES, SUPPORTED_SCHEMA_VERSION
 from .exceptions import ManifestValidationError, SecurityValidationError
 from .models import ApplicationManifest, LaunchSettings
-from .path_utils import ensure_within_directory, read_json, reject_path_traversal
+from .path_utils import ensure_within_directory, expand_path, read_json, reject_path_traversal
 from .security import reject_command_injection_fields, validate_app_id
 
 LOG = logging.getLogger(__name__)
@@ -30,11 +30,40 @@ def _merge_defaults(defaults: dict, app_data: dict) -> dict:
     return data
 
 
+def _default_icon_path() -> Path:
+    """Return the packaged launcher icon used when an app has no icon."""
+
+    return Path(__file__).resolve().parents[1] / "assets" / "launcher" / "launcher.png"
+
+
+def _resolve_direct_entrypoint(raw: str, apps_directory: Path) -> Path:
+    """Resolve a direct app path from the registry or its parent directory."""
+
+    path = Path(raw)
+    if path.is_absolute():
+        return expand_path(raw)
+    for base in (apps_directory, apps_directory.parent):
+        candidate = expand_path(raw, base)
+        if candidate.is_file():
+            return candidate
+    return expand_path(raw, apps_directory)
+
+
 def _manifest_from_registry_entry(apps_directory: Path, defaults: dict, app_data: dict) -> ApplicationManifest:
     """Build and validate an application manifest from apps/apps.json."""
 
     reject_command_injection_fields(app_data)
     data = _merge_defaults(defaults, app_data)
+    direct_raw = app_data.get("path") or app_data.get("app_path")
+    direct_raw = direct_raw or (
+        app_data.get("entrypoint")
+        if Path(str(app_data.get("entrypoint", ""))).is_absolute()
+        else None
+    )
+    if direct_raw:
+        entrypoint = _resolve_direct_entrypoint(str(direct_raw), apps_directory)
+        app_dir = entrypoint.parent
+        return _load_app_manifest_data(app_dir, data, direct_entrypoint=entrypoint)
     folder_raw = str(_required(data, "folder"))
     reject_path_traversal(folder_raw)
     app_dir = ensure_within_directory(apps_directory / folder_raw, apps_directory)
@@ -49,7 +78,7 @@ def load_app_manifest(app_dir: Path) -> ApplicationManifest:
     return _load_app_manifest_data(app_dir, data)
 
 
-def _load_app_manifest_data(app_dir: Path, data: dict) -> ApplicationManifest:
+def _load_app_manifest_data(app_dir: Path, data: dict, direct_entrypoint: Path | None = None) -> ApplicationManifest:
     """Validate application metadata against files inside app_dir."""
 
     if int(data.get("schema_version", SUPPORTED_SCHEMA_VERSION)) != SUPPORTED_SCHEMA_VERSION:
@@ -63,24 +92,38 @@ def _load_app_manifest_data(app_dir: Path, data: dict) -> ApplicationManifest:
     if app_type not in SUPPORTED_APP_TYPES:
         raise ManifestValidationError(f"Unsupported app type: {app_type}")
 
-    entrypoint_raw = str(_required(data, "entrypoint"))
-    icon_raw = str(_required(data, "icon"))
-    requirements_raw = str(_required(data, "requirements"))
+    direct = direct_entrypoint is not None
+    entrypoint_raw = str(data.get("entrypoint", ""))
+    icon_raw = str(data.get("icon", ""))
+    requirements_raw = str(data.get("requirements", ""))
     wheelhouse_raw = str(data.get("wheelhouse", "wheelhouse"))
-    for value in (entrypoint_raw, icon_raw, requirements_raw, wheelhouse_raw):
-        reject_path_traversal(value)
+    if direct:
+        entrypoint = direct_entrypoint.resolve()
+        icon = expand_path(icon_raw, app_dir) if icon_raw else _default_icon_path()
+        requirements = expand_path(requirements_raw, app_dir) if requirements_raw else None
+        wheelhouse = expand_path(wheelhouse_raw, app_dir)
+    else:
+        for value in (entrypoint_raw, icon_raw, requirements_raw, wheelhouse_raw):
+            reject_path_traversal(value)
+        entrypoint = ensure_within_directory(app_dir / _required(data, "entrypoint"), app_dir)
+        icon = ensure_within_directory(app_dir / _required(data, "icon"), app_dir)
+        requirements = ensure_within_directory(app_dir / _required(data, "requirements"), app_dir)
+        wheelhouse = ensure_within_directory(app_dir / wheelhouse_raw, app_dir)
 
-    entrypoint = ensure_within_directory(app_dir / entrypoint_raw, app_dir)
-    icon = ensure_within_directory(app_dir / icon_raw, app_dir)
-    requirements = ensure_within_directory(app_dir / requirements_raw, app_dir)
-    wheelhouse = ensure_within_directory(app_dir / wheelhouse_raw, app_dir)
-
+    if direct and entrypoint.suffix.lower() != ".py":
+        raise ManifestValidationError(f"Entrypoint must be a .py file: {entrypoint}")
     if not entrypoint.is_file():
         raise ManifestValidationError(f"Entrypoint does not exist: {entrypoint}")
     if not icon.is_file():
-        raise ManifestValidationError(f"Icon does not exist: {icon}")
-    if not requirements.is_file():
-        raise ManifestValidationError(f"Requirements file does not exist: {requirements}")
+        if direct and _default_icon_path().is_file():
+            icon = _default_icon_path()
+        else:
+            raise ManifestValidationError(f"Icon does not exist: {icon}")
+    if requirements is not None and not requirements.is_file():
+        if direct:
+            requirements = None
+        else:
+            raise ManifestValidationError(f"Requirements file does not exist: {requirements}")
     display_order = int(_required(data, "display_order"))
     if display_order < 1:
         raise ManifestValidationError("display_order must be positive")

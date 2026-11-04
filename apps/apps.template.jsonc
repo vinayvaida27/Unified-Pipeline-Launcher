@@ -29,6 +29,16 @@
       "display_order": 1,
       "enabled": true,
       "archived": false             // true moves it out of All applications
+    },
+    {
+      "id": "external-app",
+      "path": "D:/shared/pipelines/my_app.py", // direct file; no folder needed
+      "name": "External App",
+      "version": "1.0.0",
+      "description": "A Streamlit file stored outside apps/.",
+      "category": "External",
+      "display_order": 2
+      // requirements and icon are optional for direct files
     }
   ]
 }

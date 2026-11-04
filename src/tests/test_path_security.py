@@ -18,12 +18,13 @@ def test_rejects_parent_traversal(copied_apps):
     assert all(app.id != "hello-pipeline" for app in apps)
 
 
-def test_rejects_absolute_entrypoint_outside_app_root(copied_apps, tmp_path):
+def test_allows_explicit_absolute_entrypoint(copied_apps, tmp_path):
     outside = tmp_path / "outside.py"
     outside.write_text("", encoding="utf-8")
     _mutate_first_registry_app(copied_apps, entrypoint=str(outside))
     apps = discover_apps(copied_apps)
-    assert all(app.id != "hello-pipeline" for app in apps)
+    app = next(app for app in apps if app.id == "hello-pipeline")
+    assert app.entrypoint == outside.resolve()
 
 
 def test_rejects_command_injection_fields(copied_apps):

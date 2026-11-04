@@ -116,7 +116,7 @@ class ApplicationManifest:
     type: str
     entrypoint: Path
     icon: Path
-    requirements: Path
+    requirements: Path | None
     wheelhouse: Path
     python_version: str
     enabled: bool
