@@ -7,7 +7,7 @@
 Unified Pipeline Launcher is a Windows desktop application for starting,
 viewing, restarting, and stopping local Streamlit applications from one screen.
 
-> **Open source:** released under the [MIT License](LICENSE). Contributions are
+> **Open source:** released under the [MIT License](src/LICENSE). Contributions are
 > welcome; see [CONTRIBUTING.md](CONTRIBUTING.md),
 > [CODE_OF_CONDUCT.md](CODE_OF_CONDUCT.md), and [SECURITY.md](SECURITY.md).
 
@@ -24,12 +24,12 @@ laboratory, patient, credential, or other sensitive data.
 
 A separate Python installation is not required.
 
-For Git Bash, WSL, or a Linux/macOS development checkout, `install.sh` is a
+For Git Bash, WSL, or a Linux/macOS development checkout, `src/install.sh` is a
 small convenience wrapper. It requires Python 3 on `PATH` and installs the
 launcher requirements plus each non-template app's `requirements.txt`:
 
 ```bash
-./install.sh
+./src/install.sh
 ```
 
 Windows users should double-click `INSTALL.bat`; it prepares the supported
@@ -139,7 +139,7 @@ Start the launcher again after both commands finish.
 The equivalent maintenance entry point for a shell is:
 
 ```bash
-./update_dependency.sh
+./src/update_dependency.sh
 ```
 
 The `ECC` branch contains the current reliability work. Its
@@ -236,11 +236,12 @@ Unified-Pipeline-Launcher/
 |-- START_LAUNCHER_DEBUG.bat    Troubleshooting launcher
 |-- UPDATE_PACKAGES.bat         Python environment updater
 |-- README.md
-|-- LICENSE
 `-- src/
     |-- config/                 Launcher configuration
     |-- launcher/               Desktop application
-    |-- scripts/                Install, update, and build support
+    |-- scripts/                Dependency, build, and release support
+    |-- install.sh              Shell dependency installer
+    |-- LICENSE                 Project license
     |-- tests/                  Automated tests
     |-- pyproject.toml          Dependency and package metadata
     `-- uv.lock                 Reproducible development/build lock
@@ -258,7 +259,7 @@ apps/apps.json
     -> launcher.secure_browser (loopback-only, extension-free Edge session)
 
 src/config + runtime paths -> launcher.config / runtime_validation
-src/scripts               -> install, dependency, build, release workflows
+src/scripts               -> dependency, build, release workflows
 src/tests                  -> registry, path, process, browser, and UI checks
 ```
 
@@ -339,4 +340,4 @@ patient data, or an exploitable proof of concept.
 ## License
 
 Copyright © 2026 vinayvaida27. This project is licensed under the
-[MIT License](LICENSE).
+[MIT License](src/LICENSE).

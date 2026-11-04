@@ -48,7 +48,7 @@ Invoke-GateStep "public metadata" {
     foreach ($Path in @("pyproject.toml", "uv.lock", "requirements-launcher.txt", "scripts\ensure_uv.ps1", "scripts\create_launcher_shortcut.ps1")) {
         if (-not (Test-Path -LiteralPath (Join-Path $Root $Path))) { throw "Missing public metadata file: $Path" }
     }
-    foreach ($Path in @("README.md", "LICENSE", "UPDATE_PACKAGES.bat", "START_LAUNCHER.bat", "START_LAUNCHER.vbs", "START_LAUNCHER_DEBUG.bat", "apps\apps.json")) {
+    foreach ($Path in @("README.md", "src\LICENSE", "UPDATE_PACKAGES.bat", "START_LAUNCHER.bat", "START_LAUNCHER.vbs", "START_LAUNCHER_DEBUG.bat", "apps\apps.json")) {
         if (-not (Test-Path -LiteralPath (Join-Path $PublicRoot $Path))) { throw "Missing public root file: $Path" }
     }
 }

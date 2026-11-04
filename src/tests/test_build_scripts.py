@@ -53,7 +53,9 @@ def test_vbs_launcher_runs_pythonw_hidden(repo_root):
 
 
 def test_debug_batch_is_not_user_facing_launcher(repo_root):
-    assert not (repo_root / "START_LAUNCHER.bat").exists()
+    launcher = (repo_root / "START_LAUNCHER.bat").read_text(encoding="utf-8")
+    assert "-m launcher" in launcher
+    assert "--no-local-cache" in launcher
 
     script = (repo_root / "START_LAUNCHER_DEBUG.bat").read_text(encoding="utf-8")
     assert "debug console" in script.lower()

@@ -13,9 +13,9 @@ if [[ -z "$PYTHON" ]]; then
 fi
 
 "$PYTHON" -m pip install --upgrade pip
-"$PYTHON" -m pip install -r "$ROOT/src/requirements.txt"
+"$PYTHON" -m pip install -r "$ROOT/requirements.txt"
 while IFS= read -r requirements; do
   "$PYTHON" -m pip install -r "$requirements"
-done < <(find "$ROOT/apps" -mindepth 2 -maxdepth 2 -type f -name requirements.txt \
+done < <(find "$ROOT/../apps" -mindepth 2 -maxdepth 2 -type f -name requirements.txt \
   ! -path '*/app_template/*' | sort)
 echo "Launcher and application dependencies installed."

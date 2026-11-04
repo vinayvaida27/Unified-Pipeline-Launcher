@@ -101,7 +101,7 @@ class ExeBuilder:
         config["paths"]["apps_directory"] = "../apps"
         release_config.write_text(json.dumps(config, indent=2) + "\n", encoding="utf-8")
         for name in ("README.md", "LICENSE", "requirements-launcher.txt"):
-            src = (self.project_root / name) if name == "requirements-launcher.txt" else (self.public_root / name)
+            src = self.project_root / name if name in {"requirements-launcher.txt", "LICENSE"} else self.public_root / name
             if src.exists():
                 shutil.copy2(src, self.release_dir / name)
         for name in ("START_LAUNCHER.bat", "START_LAUNCHER.vbs", "START_LAUNCHER_DEBUG.bat"):
