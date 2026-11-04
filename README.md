@@ -136,6 +136,21 @@ sync no longer automatically clears and rebuilds that environment.
 
 Start the launcher again after both commands finish.
 
+### Pull code updates without reinstalling Python
+
+When the domain PC already has a validated `src\runtime`, pull source changes
+and run source mode. This bypasses any older `launcher.exe` and does not
+download Python or reinstall packages:
+
+```powershell
+git pull --ff-only origin development/codex-launcher-v2
+& .\START_LAUNCHER.bat --source
+```
+
+Use `START_LAUNCHER_DEBUG.bat` only when you need visible diagnostics. Run
+`INSTALL.bat` again only when the runtime validation fails or dependencies
+actually change.
+
 The equivalent maintenance entry point for a shell is:
 
 ```bash

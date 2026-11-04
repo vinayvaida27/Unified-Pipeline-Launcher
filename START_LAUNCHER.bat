@@ -2,8 +2,10 @@
 setlocal DisableDelayedExpansion
 set "SILENT=0"
 set "DEBUG=0"
+set "SOURCE=0"
 if /I "%~1"=="--silent" set "SILENT=1"
 if /I "%~1"=="--debug" set "DEBUG=1"
+if /I "%~1"=="--source" set "SOURCE=1"
 for %%I in ("%~dp0.") do set "ROOT=%%~fI"
 set "SRC=%ROOT%\src"
 set "PYTHON=%SRC%\runtime\python.exe"
@@ -26,7 +28,7 @@ if not exist "%EXE%" (
   "%PYTHON%" -E -s -c "import launcher"
   if errorlevel 1 goto invalid_source
 )
-if exist "%EXE%" (
+if exist "%EXE%" if "%SOURCE%"=="0" (
   start "" /wait "%EXE%" --config "%CONFIG%" --no-local-cache
 ) else if "%DEBUG%"=="1" (
   "%PYTHON%" -E -s -m launcher --config "%CONFIG%" --no-local-cache
