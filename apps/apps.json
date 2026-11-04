@@ -37,7 +37,7 @@
       "description": "A minimal Streamlit application used as the second launcher example.",
       "category": "Demonstration",
       "display_order": 2,
-      "archived": true
+      "archived": false
     },
     {
       "id": "data-ingestion-pipeline",
