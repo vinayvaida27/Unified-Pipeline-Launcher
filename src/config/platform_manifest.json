@@ -1,0 +1,17 @@
+{
+  "schema_version": 1,
+  "platform_version": "1.0.0",
+  "published_at": "2026-06-10T12:00:00Z",
+  "applications": [
+    {"id": "hello-pipeline", "version": "1.0.0", "relative_path": "apps/01_hello_pipeline", "sha256_manifest": "checksums.sha256"},
+    {"id": "second-app", "version": "1.0.0", "relative_path": "apps/02_second_app", "sha256_manifest": "checksums.sha256"},
+    {"id": "data-ingestion-pipeline", "version": "1.0.0", "relative_path": "apps/03_data_ingestion", "sha256_manifest": "checksums.sha256"},
+    {"id": "data-cleaning-pipeline", "version": "1.0.0", "relative_path": "apps/04_data_cleaning", "sha256_manifest": "checksums.sha256"},
+    {"id": "data-validation-pipeline", "version": "1.0.0", "relative_path": "apps/05_data_validation", "sha256_manifest": "checksums.sha256"},
+    {"id": "analytics-pipeline", "version": "1.0.0", "relative_path": "apps/06_analytics_pipeline", "sha256_manifest": "checksums.sha256"},
+    {"id": "reporting-pipeline", "version": "1.0.0", "relative_path": "apps/07_reporting_pipeline", "sha256_manifest": "checksums.sha256"},
+    {"id": "sequence-qc-pipeline", "version": "1.0.0", "relative_path": "apps/08_sequence_qc", "sha256_manifest": "checksums.sha256"},
+    {"id": "fungal-identification-pipeline", "version": "1.0.0", "relative_path": "apps/09_fungal_identification", "sha256_manifest": "checksums.sha256"},
+    {"id": "surveillance-dashboard", "version": "1.0.0", "relative_path": "apps/10_surveillance_dashboard", "sha256_manifest": "checksums.sha256"}
+  ]
+}

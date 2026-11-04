@@ -1,0 +1,1 @@
+Demo icons in this repository are simple generated SVG placeholders and do not use Material Symbols.

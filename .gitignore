@@ -1,0 +1,31 @@
+apps/
+**/apps/
+runtime/
+**/runtime/
+.idea/
+.vscode/
+__pycache__/
+.venv/
+venv/
+.env
+.env.*
+!.env.example
+*.csv
+*.xlsx
+*.xls
+*.db
+*.sqlite*
+*.ab1
+*.fastq
+*.bam
+*.vcf
+*.log
+*.pem
+*.key
+*.pfx
+
+# Local research state
+src/.autoresearch/
+
+# Machine-specific shortcut
+START_LAUNCHER.lnk
