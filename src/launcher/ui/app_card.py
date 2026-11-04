@@ -20,7 +20,9 @@ class AppCard(QFrame):
         self.archived = archived
         self.current_status = ApplicationStatus.STOPPED
         self.setObjectName("card")
-        self.setMinimumHeight(126)
+        # Keep the card compact at every window size; the grid may resize width,
+        # but should never stretch a card to fill full-screen vertical space.
+        self.setFixedHeight(176)
 
         self.icon_label = QLabel()
         self.icon_label.setFixedSize(40, 40)
