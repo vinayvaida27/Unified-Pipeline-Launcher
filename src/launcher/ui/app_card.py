@@ -82,8 +82,6 @@ class AppCard(QFrame):
         self._set_archived_state(archived)
 
     def _primary_action(self) -> str:
-        if self.archived:
-            return "restore"
         if self.current_status == ApplicationStatus.RUNNING:
             return "open"
         if self.current_status == ApplicationStatus.FAILED:
@@ -94,6 +92,13 @@ class AppCard(QFrame):
         menu = QMenu(self)
         menu.addAction("View log", lambda: self.action_clicked.emit(self.app.id, "log"))
         if self.archived:
+            if self.current_status == ApplicationStatus.RUNNING:
+                menu.addAction("Open", lambda: self.action_clicked.emit(self.app.id, "open"))
+                menu.addAction("Restart", lambda: self.action_clicked.emit(self.app.id, "restart"))
+                menu.addAction("Stop", lambda: self.action_clicked.emit(self.app.id, "stop"))
+            elif self.current_status != ApplicationStatus.STARTING:
+                menu.addAction("Start", lambda: self.action_clicked.emit(self.app.id, "start"))
+            menu.addSeparator()
             menu.addAction("Restore", lambda: self.action_clicked.emit(self.app.id, "restore"))
         elif self.current_status == ApplicationStatus.RUNNING:
             menu.addAction("Restart", lambda: self.action_clicked.emit(self.app.id, "restart"))
@@ -106,12 +111,7 @@ class AppCard(QFrame):
 
     def _set_archived_state(self, archived: bool) -> None:
         self.archived = archived
-        if archived:
-            self.status.setText("● Archived")
-            self.primary_button.setText("Restore")
-            self.primary_button.setObjectName("secondary")
-        else:
-            self._refresh_status()
+        self._refresh_status()
         self.primary_button.style().unpolish(self.primary_button)
         self.primary_button.style().polish(self.primary_button)
 
@@ -119,10 +119,8 @@ class AppCard(QFrame):
         self._set_archived_state(archived)
 
     def _refresh_status(self, progress: str | None = None) -> None:
-        if self.archived:
-            return
         label = progress or self.current_status.value
-        self.status.setText(f"● {label}")
+        self.status.setText(f"● Archived · {label}" if self.archived and label != ApplicationStatus.STOPPED.value else "● Archived" if self.archived else f"● {label}")
         self.primary_button.setText({
             ApplicationStatus.RUNNING: "Open",
             ApplicationStatus.STARTING: "Starting…",
