@@ -1,16 +1,20 @@
-"""Build the portable Unified Streamlit Launcher release folder."""
+"""Build the portable Unified Pipeline Launcher release folder."""
 
 from __future__ import annotations
 
 import hashlib
 import json
+import os
 import shutil
 import subprocess
 import sys
 from datetime import datetime, timezone
 from pathlib import Path
 
-from create_pyinstaller_spec import generate_spec
+if __package__:
+    from .create_pyinstaller_spec import generate_spec
+else:
+    from create_pyinstaller_spec import generate_spec
 
 
 class ExeBuilder:
@@ -20,13 +24,13 @@ class ExeBuilder:
         self.project_root = (project_root or Path(__file__).resolve().parent.parent).resolve()
         self.public_root = self.project_root.parent if self.project_root.name == "src" else self.project_root
         self.build_dir = self.project_root / "build"
-        self.release_dir = self.build_dir / "Unified-Streamlit-Launcher"
+        self.release_dir = self.build_dir / "Unified-Pipeline-Launcher"
         self.pyinstaller_dist = self.build_dir / "pyinstaller"
         self.pyinstaller_work = self.build_dir / "pyinstaller-work"
 
-    def run(self, command: list[str]) -> None:
+    def run(self, command: list[str], *, env: dict[str, str] | None = None) -> None:
         print("+", " ".join(command))
-        subprocess.run(command, cwd=self.project_root, check=True)
+        subprocess.run(command, cwd=self.project_root, check=True, env=env)
 
     def clean_previous(self) -> None:
         print("Step 1: Cleaning previous build output")
@@ -46,6 +50,19 @@ class ExeBuilder:
 
     def run_pyinstaller(self, spec_path: Path) -> None:
         print("Step 4: Building launcher.exe")
+        env = {key: value for key, value in os.environ.items() if not key.upper().startswith("PYTHON")}
+        if os.name == "nt":
+            windows = Path(os.environ["SystemRoot"]).resolve()
+            # PyInstaller resolves native dependencies through PATH. Utilities
+            # such as Poppler may supply same-named DLLs with incompatible APIs.
+            # Package hooks supply their own library locations separately.
+            search_paths = dict.fromkeys([
+                Path(sys.executable).resolve().parent,
+                Path(sys.base_prefix).resolve(),
+                windows / "System32",
+                windows,
+            ])
+            env["PATH"] = os.pathsep.join(str(path) for path in search_paths)
         self.run(
             [
                 sys.executable,
@@ -58,7 +75,8 @@ class ExeBuilder:
                 "--workpath",
                 str(self.pyinstaller_work),
                 str(spec_path),
-            ]
+            ],
+            env=env,
         )
 
     def copy_release_files(self) -> None:
@@ -67,7 +85,7 @@ class ExeBuilder:
         if not source_launcher.exists():
             raise FileNotFoundError(f"PyInstaller output was not found: {source_launcher}")
         shutil.copytree(source_launcher, self.release_dir)
-        for name in ("assets", "config", "runtime"):
+        for name in ("assets", "config", "runtime", "scripts"):
             src = self.project_root / name
             dst = self.release_dir / name
             if dst.exists():
@@ -78,11 +96,15 @@ class ExeBuilder:
         if apps_dst.exists():
             shutil.rmtree(apps_dst)
         shutil.copytree(apps_src, apps_dst, ignore=shutil.ignore_patterns("*.md"))
+        release_config = self.release_dir / "config" / "launcher_config.json"
+        config = json.loads(release_config.read_text(encoding="utf-8"))
+        config["paths"]["apps_directory"] = "../apps"
+        release_config.write_text(json.dumps(config, indent=2) + "\n", encoding="utf-8")
         for name in ("README.md", "LICENSE", "requirements-launcher.txt"):
             src = (self.project_root / name) if name == "requirements-launcher.txt" else (self.public_root / name)
             if src.exists():
                 shutil.copy2(src, self.release_dir / name)
-        for name in ("START_LAUNCHER.vbs", "START_LAUNCHER_DEBUG.bat"):
+        for name in ("START_LAUNCHER.bat", "START_LAUNCHER.vbs", "START_LAUNCHER_DEBUG.bat"):
             src = self.public_root / name
             if src.exists():
                 shutil.copy2(src, self.release_dir / name)
@@ -90,7 +112,7 @@ class ExeBuilder:
         (self.release_dir / "release_info.json").write_text(
             json.dumps(
                 {
-                    "name": "Unified-Streamlit-Launcher",
+                    "name": "Unified-Pipeline-Launcher",
                     "built_at": datetime.now(timezone.utc).isoformat(),
                     "apps_external_to_exe": True,
                     "app_registry": "apps/apps.json",
@@ -122,6 +144,7 @@ class ExeBuilder:
         print("Step 7: Verifying release structure")
         required = [
             "launcher.exe",
+            "START_LAUNCHER.bat",
             "START_LAUNCHER.vbs",
             "START_LAUNCHER_DEBUG.bat",
             "requirements-launcher.txt",
@@ -131,6 +154,7 @@ class ExeBuilder:
             "apps/app_template/app.py",
             "assets",
             "runtime",
+            "scripts/prepare_shared_runtime.ps1",
         ]
         missing = [item for item in required if not (self.release_dir / item).exists()]
         if missing:
@@ -138,7 +162,7 @@ class ExeBuilder:
 
     def build(self) -> Path:
         print("=" * 72)
-        print("Unified Streamlit Launcher EXE Build")
+        print("Unified Pipeline Launcher EXE Build")
         print("=" * 72)
         self.clean_previous()
         self.run_tests()

@@ -2,17 +2,17 @@ param()
 
 $ErrorActionPreference = "Stop"
 $Root = Split-Path -Parent $PSScriptRoot
-$PublicRoot = Split-Path -Parent $Root
-$Python = Join-Path $PublicRoot ".venv\Scripts\python.exe"
-if (!(Test-Path $Python)) { $Python = Join-Path $Root ".venv\Scripts\python.exe" }
-if (!(Test-Path $Python)) { throw "Run src/scripts/setup_dev.ps1 first." }
+. (Join-Path $PSScriptRoot "common.ps1")
+Clear-LauncherPythonEnvironment
+$Uv = & (Join-Path $PSScriptRoot "ensure_uv.ps1")
+if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
 
-Write-Host "Building Unified Streamlit Launcher EXE release..."
-& $Python (Join-Path $Root "build_scripts\build.py")
+Write-Host "Building Unified Pipeline Launcher EXE release..."
+& $Uv run --project $Root --locked python (Join-Path $Root "build_scripts\build.py")
 if ($LASTEXITCODE -ne 0) {
   exit $LASTEXITCODE
 }
 
 Write-Host ""
 Write-Host "Done. Release folder:"
-Write-Host (Join-Path $Root "build\Unified-Streamlit-Launcher")
+Write-Host (Join-Path $Root "build\Unified-Pipeline-Launcher")

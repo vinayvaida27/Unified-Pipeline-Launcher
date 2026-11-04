@@ -1,0 +1,34 @@
+{
+  // Strict runtime data lives in apps.json. This commented template documents
+  // the fields accepted by the launcher; JSON comments are not valid in apps.json.
+  "schema_version": 1,
+  "defaults": {
+    "type": "streamlit",
+    "entrypoint": "app.py",
+    "icon": "assets/icon.svg",
+    "requirements": "requirements.txt",
+    "enabled": true,
+    "archived": false,
+    "launch": {
+      "address": "127.0.0.1",
+      "port": "dynamic",
+      "headless": true,
+      "file_watcher_type": "none",
+      "gather_usage_stats": false,
+      "startup_timeout_seconds": 60
+    }
+  },
+  "applications": [
+    {
+      "id": "my-app",              // stable slug used by the launcher
+      "folder": "my_app",          // folder below apps/
+      "name": "My App",
+      "version": "1.0.0",
+      "description": "Short description shown on the card.",
+      "category": "General",
+      "display_order": 1,
+      "enabled": true,
+      "archived": false             // true moves it out of All applications
+    }
+  ]
+}

@@ -123,6 +123,7 @@ class ApplicationManifest:
     display_order: int
     launch: LaunchSettings
     app_dir: Path
+    archived: bool = False
 
 
 @dataclass

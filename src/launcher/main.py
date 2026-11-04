@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import argparse
+import ctypes
 import logging
 import sys
 from pathlib import Path
@@ -17,6 +18,20 @@ from .process_manager import ProcessManager
 from .runtime_downloader import RuntimeDownloader
 
 LOG = logging.getLogger(__name__)
+
+
+def _apply_windows_dark_titlebar(window) -> None:
+    """Ask Windows for a native dark title bar without replacing window chrome."""
+
+    if sys.platform != "win32":
+        return
+    try:
+        value = ctypes.c_int(1)
+        ctypes.windll.dwmapi.DwmSetWindowAttribute(
+            int(window.winId()), 20, ctypes.byref(value), ctypes.sizeof(value)
+        )
+    except (AttributeError, OSError):
+        LOG.debug("Native dark title bar is unavailable", exc_info=True)
 
 
 def installation_root() -> Path:
@@ -77,9 +92,13 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--development", action="store_true")
     args = parser.parse_args(argv)
 
+    from PySide6.QtGui import QIcon
     from PySide6.QtWidgets import QApplication, QMessageBox
 
     qt_app = QApplication(sys.argv[:1])
+    icon = QIcon(str(installation_root() / "assets" / "launcher" / "launcher.png"))
+    if not icon.isNull():
+        qt_app.setWindowIcon(icon)
 
     try:
         config = load_platform_config(resolve_config_path(args.config))
@@ -123,6 +142,7 @@ def main(argv: list[str] | None = None) -> int:
 
     window = MainWindow(config, apps, env_manager, process_manager)
     window.show()
+    _apply_windows_dark_titlebar(window)
     result = qt_app.exec()
     if config.launcher.stop_apps_on_exit:
         process_manager.stop_all()

@@ -1,0 +1,116 @@
+{
+  "schema_version": 1,
+  "defaults": {
+    "type": "streamlit",
+    "entrypoint": "app.py",
+    "icon": "assets/icon.svg",
+    "requirements": "requirements.txt",
+    "wheelhouse": "wheelhouse",
+    "python_version": "3.11",
+    "enabled": true,
+    "archived": false,
+    "launch": {
+      "address": "127.0.0.1",
+      "port": "dynamic",
+      "headless": true,
+      "file_watcher_type": "none",
+      "gather_usage_stats": false,
+      "startup_timeout_seconds": 60
+    }
+  },
+  "applications": [
+    {
+      "id": "hello-pipeline",
+      "folder": "01_hello_pipeline",
+      "name": "Hello Pipeline",
+      "version": "1.0.0",
+      "description": "A minimal Streamlit application that displays a hello message.",
+      "category": "Demonstration",
+      "display_order": 1,
+      "archived": true
+    },
+    {
+      "id": "second-app",
+      "folder": "02_second_app",
+      "name": "Second App",
+      "version": "1.0.0",
+      "description": "A minimal Streamlit application used as the second launcher example.",
+      "category": "Demonstration",
+      "display_order": 2,
+      "archived": true
+    },
+    {
+      "id": "data-ingestion-pipeline",
+      "folder": "03_data_ingestion",
+      "name": "Data Ingestion Pipeline",
+      "version": "1.0.0",
+      "description": "A minimal Streamlit application for a data ingestion pipeline.",
+      "category": "Data Engineering",
+      "display_order": 3
+    },
+    {
+      "id": "data-cleaning-pipeline",
+      "folder": "04_data_cleaning",
+      "name": "Data Cleaning Pipeline",
+      "version": "1.0.0",
+      "description": "A minimal Streamlit application for a data cleaning pipeline.",
+      "category": "Data Engineering",
+      "display_order": 4
+    },
+    {
+      "id": "data-validation-pipeline",
+      "folder": "05_data_validation",
+      "name": "Data Validation Pipeline",
+      "version": "1.0.0",
+      "description": "A minimal Streamlit application for a data validation pipeline.",
+      "category": "Data Engineering",
+      "display_order": 5
+    },
+    {
+      "id": "analytics-pipeline",
+      "folder": "06_analytics_pipeline",
+      "name": "Analytics Pipeline",
+      "version": "1.0.0",
+      "description": "A minimal Streamlit application for analytics.",
+      "category": "Analytics",
+      "display_order": 6
+    },
+    {
+      "id": "reporting-pipeline",
+      "folder": "07_reporting_pipeline",
+      "name": "Reporting Pipeline",
+      "version": "1.0.0",
+      "description": "A minimal Streamlit application for reporting.",
+      "category": "Reporting",
+      "display_order": 7
+    },
+    {
+      "id": "sequence-qc-pipeline",
+      "folder": "08_sequence_qc",
+      "name": "Sequence QC Pipeline",
+      "version": "1.0.0",
+      "description": "A minimal Streamlit application for sequence quality control.",
+      "category": "Bioinformatics",
+      "display_order": 8
+    },
+    {
+      "id": "fungal-identification-pipeline",
+      "folder": "09_fungal_identification",
+      "name": "Fungal Identification Pipeline",
+      "version": "1.0.0",
+      "description": "A minimal Streamlit application for fungal identification.",
+      "category": "Bioinformatics",
+      "display_order": 9
+    },
+    {
+      "id": "surveillance-dashboard",
+      "folder": "10_surveillance_dashboard",
+      "name": "Surveillance Dashboard",
+      "version": "1.0.0",
+      "description": "A minimal Streamlit application for surveillance dashboard launch testing.",
+      "category": "Surveillance",
+      "display_order": 10,
+      "archived": false
+    }
+  ]
+}

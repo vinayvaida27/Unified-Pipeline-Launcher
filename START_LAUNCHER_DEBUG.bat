@@ -4,6 +4,7 @@ setlocal EnableExtensions
 :: ============================================================
 :: Unified Streamlit Launcher - DEBUG CONSOLE
 :: Use this first. It keeps errors visible.
+:: Normal users should use START_LAUNCHER.lnk or START_LAUNCHER.vbs.
 :: ============================================================
 
 set "ROOT=%~dp0"
@@ -11,7 +12,6 @@ set "EXE=%ROOT%launcher.exe"
 set "SRC=%ROOT%src"
 if not exist "%SRC%" set "SRC=%ROOT%"
 set "PYTHON=%SRC%\runtime\python.exe"
-set "PYTHONW=%SRC%\runtime\pythonw.exe"
 set "CONFIG=%SRC%\config\launcher_config.json"
 
 set "QT_LOGGING_RULES=qt.svg.warning=false;qt.svg.debug=false"

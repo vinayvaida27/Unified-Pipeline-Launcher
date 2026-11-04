@@ -5,20 +5,22 @@ from __future__ import annotations
 from collections import deque
 import logging
 import os
+from threading import Event
 from urllib.parse import parse_qsl, urlencode, urlparse, urlunparse
 from uuid import uuid4
 
-from PySide6.QtCore import QThreadPool, QTimer
-from PySide6.QtCore import QUrl
+from PySide6.QtCore import QSize, Qt, QThreadPool, QTimer, QUrl
 from PySide6.QtGui import QDesktopServices
 from PySide6.QtWidgets import (
     QComboBox,
+    QFrame,
     QGridLayout,
     QHBoxLayout,
     QLabel,
     QLineEdit,
     QMainWindow,
     QMessageBox,
+    QMenu,
     QPushButton,
     QScrollArea,
     QVBoxLayout,
@@ -27,16 +29,20 @@ from PySide6.QtWidgets import (
 
 from ..environment_manager import EnvironmentManager
 from ..health_checker import HealthChecker
+from ..app_registry import set_app_archived
 from ..models import ApplicationManifest, ApplicationStatus, PlatformConfig
 from ..process_manager import ProcessManager
+from ..secure_browser import open_isolated_browser
 from .about_dialog import show_about
 from .app_card import AppCard
+from .icons import ui_icon
 from .log_dialog import LogDialog
 from .settings_dialog import SettingsDialog
 from .styles import APP_STYLE
 from .workers import Worker
 
 LOG = logging.getLogger(__name__)
+SIDEBAR_WIDTH = 208
 
 
 class MainWindow(QMainWindow):
@@ -55,27 +61,26 @@ class MainWindow(QMainWindow):
         self.environment_manager = environment_manager
         self.process_manager = process_manager
         self.cards: dict[str, AppCard] = {}
+        self._archived_ids = {app.id for app in apps if app.archived}
+        self._filtered_app_ids = [app.id for app in apps if app.id not in self._archived_ids]
+        self._column_count = 0
         self._startup_queue: deque[str] = deque()
         self._queued_ids: set[str] = set()
         self._starting_ids: set[str] = set()
         self._launch_tokens: dict[str, str] = {}
         self._active_launch_tokens: set[str] = set()
-        self._log_completed_tokens: set[str] = set()
+        self._startup_cancellations: dict[str, Event] = {}
         self._browser_opened_tokens: set[str] = set()
         self._user_stopped_ids: set[str] = set()
         self._active_startups = 0
         self._parallel_startup_limit = max(1, config.launcher.maximum_parallel_startups)
-        self.thread_pool = QThreadPool.globalInstance()
-        self.thread_pool.setMaxThreadCount(max(self.thread_pool.maxThreadCount(), self._parallel_startup_limit))
+        self.thread_pool = QThreadPool(self)
+        self.thread_pool.setMaxThreadCount(self._parallel_startup_limit)
         self.setWindowTitle(config.platform_name)
         self.resize(config.window.width, config.window.height)
         self.setMinimumSize(config.window.minimum_width, config.window.minimum_height)
         self.setStyleSheet(APP_STYLE)
         self._build_ui()
-        self.ready_log_timer = QTimer(self)
-        self.ready_log_timer.setInterval(250)
-        self.ready_log_timer.timeout.connect(self._sync_ready_logs)
-        self.ready_log_timer.start()
         self.liveness_timer = QTimer(self)
         self.liveness_timer.setInterval(2000)
         self.liveness_timer.timeout.connect(self._sync_process_liveness)
@@ -84,100 +89,282 @@ class MainWindow(QMainWindow):
     def _build_ui(self) -> None:
         root = QWidget()
         root.setObjectName("root")
-        layout = QVBoxLayout(root)
+        shell = QHBoxLayout(root)
+        shell.setContentsMargins(0, 0, 0, 0)
+        shell.setSpacing(0)
+
+        self.sidebar = QWidget()
+        self.sidebar.setObjectName("sidebar")
+        self.sidebar.setFixedWidth(SIDEBAR_WIDTH)
+        sidebar_layout = QVBoxLayout(self.sidebar)
+        sidebar_layout.setContentsMargins(16, 18, 16, 16)
+        sidebar_layout.setSpacing(6)
+
+        brand_layout = QHBoxLayout()
+        brand_layout.setSpacing(10)
+        brand_icon = self.windowIcon().pixmap(38, 38)
+        if not brand_icon.isNull():
+            brand = QLabel()
+            brand.setObjectName("brandIcon")
+            brand.setFixedSize(40, 40)
+            brand.setAlignment(Qt.AlignmentFlag.AlignCenter)
+            brand.setPixmap(brand_icon)
+            brand_layout.addWidget(brand, 0, Qt.AlignmentFlag.AlignTop)
+        brand_title = QLabel("Pipeline Launcher")
+        brand_title.setObjectName("brandTitle")
+        brand_title.setWordWrap(True)
+        brand_layout.addWidget(brand_title, 1, Qt.AlignmentFlag.AlignVCenter)
+        sidebar_layout.addLayout(brand_layout)
+        sidebar_layout.addSpacing(22)
+
+        self.applications_nav = QPushButton("Applications")
+        self.applications_nav.setObjectName("navActive")
+        self.settings_nav = QPushButton("Settings")
+        self.settings_nav.setObjectName("navButton")
+        self.about_nav = QPushButton("About")
+        self.about_nav.setObjectName("navButton")
+        nav_items = (
+            (self.applications_nav, "layout-grid", "#69a7ff"),
+            (self.settings_nav, "settings", "#a7a7af"),
+            (self.about_nav, "info", "#a7a7af"),
+        )
+        for button, icon_name, icon_color in nav_items:
+            button.setIcon(ui_icon(icon_name, icon_color))
+            button.setIconSize(QSize(17, 17))
+            button.setFixedHeight(38)
+            button.setCursor(Qt.CursorShape.PointingHandCursor)
+            if button is self.applications_nav:
+                sidebar_layout.addWidget(button)
+        self.applications_nav.setToolTip("View applications")
+        self.settings_nav.setToolTip("View launcher settings")
+        self.about_nav.setToolTip("About this launcher")
+        self.settings_nav.clicked.connect(lambda: SettingsDialog(self.config, self).exec())
+        self.about_nav.clicked.connect(lambda: show_about(self, self.config.platform_name))
+        sidebar_layout.addStretch(1)
+        sidebar_layout.addWidget(self.settings_nav)
+        sidebar_layout.addWidget(self.about_nav)
+
+        sidebar_rule = QFrame()
+        sidebar_rule.setObjectName("sidebarRule")
+        sidebar_rule.setFrameShape(QFrame.Shape.HLine)
+        sidebar_layout.addWidget(sidebar_rule)
+        active_count = len(self.apps) - len(self._archived_ids)
+        self.sidebar_count = QLabel(f"{active_count} active / {len(self.apps)} configured")
+        self.sidebar_count.setObjectName("sidebarMeta")
+        sidebar_layout.addWidget(self.sidebar_count)
+        shell.addWidget(self.sidebar)
+
+        content = QWidget()
+        content.setObjectName("content")
+        layout = QVBoxLayout(content)
         layout.setContentsMargins(0, 0, 0, 0)
         layout.setSpacing(0)
 
-        # Header bar
         header = QWidget()
         header.setObjectName("header")
+        header.setFixedHeight(88)
         header_layout = QHBoxLayout(header)
-        header_layout.setContentsMargins(24, 18, 24, 18)
-        header_layout.setSpacing(12)
+        header_layout.setContentsMargins(20, 16, 20, 14)
+        header_layout.setSpacing(10)
         title_box = QVBoxLayout()
         title_box.setSpacing(2)
-        title = QLabel(self.config.platform_name)
-        title.setObjectName("title")
-        subtitle = QLabel(f"{len(self.apps)} applications available")
-        subtitle.setObjectName("subtitle")
+        title_box.setAlignment(Qt.AlignmentFlag.AlignVCenter)
+        title = QLabel("Applications")
+        title.setObjectName("pageTitle")
+        self.results_label = QLabel(self._application_count_text(active_count))
+        self.results_label.setObjectName("pageSubtitle")
         title_box.addWidget(title)
-        title_box.addWidget(subtitle)
+        title_box.addWidget(self.results_label)
         self.startup_summary = QLabel("")
         self.startup_summary.setObjectName("summary")
-        about = QPushButton("About")
-        settings = QPushButton("Settings")
-        about.setObjectName("ghost")
-        settings.setObjectName("ghost")
-        settings.clicked.connect(lambda: SettingsDialog(self.config, self).exec())
-        about.clicked.connect(lambda: show_about(self, self.config.platform_name))
         header_layout.addLayout(title_box)
         header_layout.addStretch(1)
-        header_layout.addWidget(self.startup_summary)
-        header_layout.addWidget(settings)
-        header_layout.addWidget(about)
+        header_layout.addWidget(self.startup_summary, 0, Qt.AlignmentFlag.AlignVCenter)
+
+        self.open_all_button = QPushButton("Actions")
+        self.stop_all_button = QPushButton("Stop All")
+        self.open_all_button.setObjectName("primary")
+        self.stop_all_button.setObjectName("danger")
+        self.open_all_button.setIcon(ui_icon("play", "#ffffff"))
+        self.stop_all_button.setIcon(ui_icon("square", "#ff8f8a"))
+        self.open_all_button.setIconSize(QSize(15, 15))
+        self.stop_all_button.setIconSize(QSize(15, 15))
+        self.open_all_button.setFixedSize(98, 38)
+        self.stop_all_button.setFixedSize(94, 38)
+        self.open_all_button.setCursor(Qt.CursorShape.PointingHandCursor)
+        self.stop_all_button.setCursor(Qt.CursorShape.PointingHandCursor)
+        actions_menu = QMenu(self.open_all_button)
+        actions_menu.addAction("Start visible stopped applications", self.open_all_apps)
+        actions_menu.addAction("Open visible running applications", self.open_running_apps)
+        actions_menu.addSeparator()
+        actions_menu.addAction("Stop all running applications", self.stop_all_apps)
+        self.open_all_button.setMenu(actions_menu)
+        self.open_all_button.setToolTip("Application actions")
+        self.stop_all_button.setToolTip("Stop all running applications")
+        self.open_all_button.clicked.connect(self.open_all_apps)
+        self.stop_all_button.clicked.connect(self.stop_all_apps)
+        header_layout.addWidget(self.open_all_button, 0, Qt.AlignmentFlag.AlignVCenter)
+        header_layout.addWidget(self.stop_all_button, 0, Qt.AlignmentFlag.AlignVCenter)
         layout.addWidget(header)
 
-        # Toolbar
         toolbar_holder = QWidget()
         toolbar_holder.setObjectName("toolbar")
+        toolbar_holder.setFixedHeight(64)
         toolbar = QHBoxLayout(toolbar_holder)
-        toolbar.setContentsMargins(24, 14, 24, 14)
-        toolbar.setSpacing(10)
+        toolbar.setContentsMargins(20, 12, 20, 12)
+        toolbar.setSpacing(8)
         self.search = QLineEdit()
-        self.search.setPlaceholderText("Search applications...")
-        self.search.setMinimumWidth(240)
+        self.search.setPlaceholderText("Search applications")
+        self.search.setMinimumWidth(260)
+        self.search.setMaximumWidth(520)
+        self.search.setFixedHeight(40)
         self.search.setClearButtonEnabled(True)
+        self.search.setAccessibleName("Search applications")
+        self.search.addAction(
+            ui_icon("search", "#74747d"),
+            QLineEdit.ActionPosition.LeadingPosition,
+        )
         self.category = QComboBox()
-        self.category.addItems(["All"] + sorted({app.category for app in self.apps}))
-        self.category.setMinimumWidth(180)
-        open_all = QPushButton("Open All")
-        stop_all = QPushButton("Stop All")
-        open_all.setObjectName("primary")
-        stop_all.setObjectName("secondary")
-        open_all.clicked.connect(self.open_all_apps)
-        stop_all.clicked.connect(self.stop_all_apps)
+        self.category.setIconSize(QSize(16, 16))
+        self.category.addItem(ui_icon("list-filter", "#85858e"), "All applications")
+        for category in sorted({app.category for app in self.apps if not app.archived}):
+            self.category.addItem(ui_icon("tag", "#85858e"), category)
+        self.category.addItem(ui_icon("archive", "#85858e"), "Archived")
+        self.category.setFixedSize(180, 40)
+        self.category.setAccessibleName("Application category")
         toolbar.addWidget(self.search, 1)
         toolbar.addWidget(self.category)
-        toolbar.addStretch(0)
-        toolbar.addWidget(open_all)
-        toolbar.addWidget(stop_all)
+        toolbar.addStretch(1)
         layout.addWidget(toolbar_holder)
 
         self.grid_widget = QWidget()
         self.grid_widget.setObjectName("grid")
         self.grid = QGridLayout(self.grid_widget)
-        self.grid.setContentsMargins(24, 20, 24, 24)
-        self.grid.setHorizontalSpacing(18)
-        self.grid.setVerticalSpacing(18)
-        scroll = QScrollArea()
-        scroll.setWidgetResizable(True)
-        scroll.setFrameShape(QScrollArea.Shape.NoFrame)
-        scroll.setWidget(self.grid_widget)
-        layout.addWidget(scroll, 1)
+        self.grid.setContentsMargins(18, 14, 18, 18)
+        self.grid.setHorizontalSpacing(10)
+        self.grid.setVerticalSpacing(10)
+        self.grid.setAlignment(Qt.AlignmentFlag.AlignTop)
+        self.empty_state = QLabel("No applications match the current filters.")
+        self.empty_state.setObjectName("emptyState")
+        self.empty_state.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        self.empty_state.setMinimumHeight(180)
+        self.empty_state.hide()
+        self.app_scroll = QScrollArea()
+        self.app_scroll.setWidgetResizable(True)
+        self.app_scroll.setFrameShape(QScrollArea.Shape.NoFrame)
+        self.app_scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
+        self.app_scroll.setWidget(self.grid_widget)
+        layout.addWidget(self.app_scroll, 1)
+        shell.addWidget(content, 1)
         self.setCentralWidget(root)
+        self.applications_nav.clicked.connect(self.search.setFocus)
         self.search.textChanged.connect(self.apply_filters)
         self.category.currentTextChanged.connect(self.apply_filters)
         self._populate_cards()
         self._update_startup_summary()
 
     def _populate_cards(self) -> None:
-        for index, app in enumerate(self.apps):
-            card = AppCard(app)
-            card.open_clicked.connect(self.open_app)
-            card.stop_clicked.connect(self.stop_app)
-            card.restart_clicked.connect(self.restart_app)
-            card.log_clicked.connect(self.view_log)
+        for app in self.apps:
+            card = AppCard(app, archived=app.id in self._archived_ids)
+            card.action_clicked.connect(self._handle_card_action)
             self.cards[app.id] = card
-            self.grid.addWidget(card, index // 2, index % 2)
-        self.grid.setRowStretch(self.grid.rowCount(), 1)
+        self._relayout_cards(force=True)
+
+    def _handle_card_action(self, app_id: str, action: str) -> None:
+        """Route the card's single primary action or overflow command."""
+
+        handlers = {
+            "start": self.open_app,
+            "open": self.open_app,
+            "retry": self.open_app,
+            "stop": self.stop_app,
+            "restart": self.restart_app,
+            "log": self.view_log,
+            "archive": lambda value: self.archive_app(value, True),
+            "restore": lambda value: self.archive_app(value, False),
+        }
+        handler = handlers.get(action)
+        if handler:
+            handler(app_id)
 
     def apply_filters(self) -> None:
         query = self.search.text().strip().lower()
         category = self.category.currentText()
+        visible_ids = []
         for app in self.apps:
             haystack = f"{app.name} {app.description} {app.category}".lower()
-            visible = (not query or query in haystack) and (category == "All" or app.category == category)
-            self.cards[app.id].setVisible(visible)
+            is_archived = app.id in self._archived_ids
+            category_match = (
+                (category == "All applications" and not is_archived)
+                or (category == "Archived" and is_archived)
+                or (category not in {"All applications", "Archived"} and not is_archived and app.category == category)
+            )
+            visible = (not query or query in haystack) and category_match
+            if visible:
+                visible_ids.append(app.id)
+        self._filtered_app_ids = visible_ids
+        visible_count = len(visible_ids)
+        self.results_label.setText(self._application_count_text(visible_count))
+        self.sidebar_count.setText(f"{visible_count} shown / {len(self.apps)} configured")
+        self.open_all_button.setEnabled(visible_count > 0)
+        self._relayout_cards(force=True)
+
+    def _desired_column_count(self, width: int | None = None) -> int:
+        content_width = (width or self.width()) - SIDEBAR_WIDTH
+        if content_width >= 1230:
+            return 3
+        if content_width >= 620:
+            return 2
+        return 1
+
+    def archive_app(self, app_id: str, archived: bool) -> None:
+        """Archive or restore an app and refresh the current view."""
+
+        if archived and self.process_manager.get(app_id):
+            self.stop_app(app_id)
+        try:
+            set_app_archived(self.config.paths.apps_directory / "apps.json", app_id, archived)
+        except Exception as exc:
+            LOG.exception("Unable to update archive state for %s", app_id)
+            QMessageBox.warning(self, "Archive update failed", str(exc))
+            return
+        if archived:
+            self._archived_ids.add(app_id)
+        else:
+            self._archived_ids.discard(app_id)
+        self.cards[app_id].set_archived(archived)
+        self.apply_filters()
+
+    def _relayout_cards(self, force: bool = False, width: int | None = None) -> None:
+        if not hasattr(self, "app_scroll"):
+            return
+        columns = self._desired_column_count(width)
+        if not force and columns == self._column_count:
+            return
+        self._column_count = columns
+        for card in self.cards.values():
+            self.grid.removeWidget(card)
+            card.hide()
+        self.grid.removeWidget(self.empty_state)
+        for column in range(3):
+            self.grid.setColumnStretch(column, int(column < columns))
+        if not self._filtered_app_ids:
+            self.grid.addWidget(self.empty_state, 0, 0, 1, columns)
+            self.empty_state.show()
+            return
+        self.empty_state.hide()
+        for index, app_id in enumerate(self._filtered_app_ids):
+            card = self.cards[app_id]
+            self.grid.addWidget(card, index // columns, index % columns)
+            card.show()
+
+    def resizeEvent(self, event) -> None:
+        super().resizeEvent(event)
+        self._relayout_cards(width=event.size().width())
+
+    @staticmethod
+    def _application_count_text(count: int) -> str:
+        return f"{count} application" if count == 1 else f"{count} applications"
 
     def open_app(self, app_id: str) -> None:
         self._user_stopped_ids.discard(app_id)
@@ -201,8 +388,10 @@ class MainWindow(QMainWindow):
         if app_id in self._starting_ids:
             return
         token = str(uuid4())
+        cancellation = Event()
         self._launch_tokens[app_id] = token
         self._active_launch_tokens.add(token)
+        self._startup_cancellations[token] = cancellation
         self._active_startups += 1
         self._starting_ids.add(app_id)
         self._update_startup_summary()
@@ -210,8 +399,13 @@ class MainWindow(QMainWindow):
 
         def work(progress):
             env = self.environment_manager.ensure_environment(app, progress=progress)
+            if cancellation.is_set():
+                return None
             progress("Starting application")
-            return self.process_manager.start(app, env)
+            state = self.process_manager.start(app, env)
+            if cancellation.is_set():
+                self.process_manager.stop(app.id)
+            return state
 
         worker = Worker(work)
         worker.signals.progress.connect(lambda message: self._start_progress(app_id, token, message))
@@ -228,9 +422,9 @@ class MainWindow(QMainWindow):
         if token in self._active_launch_tokens:
             self._active_launch_tokens.discard(token)
             self._active_startups = max(0, self._active_startups - 1)
+        self._startup_cancellations.pop(token, None)
         if self._launch_tokens.get(app_id) == token:
             self._starting_ids.discard(app_id)
-        self._log_completed_tokens.discard(token)
         self._update_startup_summary()
 
     def _start_finished(self, app_id: str, token: str, state) -> None:
@@ -274,11 +468,6 @@ class MainWindow(QMainWindow):
             self.cards[app_id].set_status(ApplicationStatus.STOPPED)
             self._start_next_queued_app()
             return
-        if token in self._log_completed_tokens:
-            self._finish_startup_accounting(app_id, token)
-            still_running = self.process_manager.get(app_id)
-            self.cards[app_id].set_status(ApplicationStatus.RUNNING if still_running else ApplicationStatus.STOPPED)
-            return
         self._finish_startup_accounting(app_id, token)
         LOG.error("Application failed to start: %s\n%s", message, details)
         self.cards[app_id].set_status(ApplicationStatus.FAILED)
@@ -311,6 +500,9 @@ class MainWindow(QMainWindow):
             self._user_stopped_ids.add(app_id)
         token = self._launch_tokens.get(app_id)
         if token:
+            cancellation = self._startup_cancellations.get(token)
+            if cancellation:
+                cancellation.set()
             self._browser_opened_tokens.discard(token)
         self.process_manager.stop(app_id)
         self.cards[app_id].set_status(ApplicationStatus.STOPPED)
@@ -323,15 +515,27 @@ class MainWindow(QMainWindow):
             if card.isVisible():
                 self.open_app(app.id)
 
+    def open_running_apps(self) -> None:
+        """Open browser sessions for visible applications already running."""
+
+        for app in self.apps:
+            if self.cards[app.id].isVisible():
+                state = self.process_manager.get(app.id)
+                if state and state.url:
+                    verified_url = self._verified_open_url(app.id, state)
+                    if verified_url:
+                        self._open_url(verified_url)
+
     def stop_all_apps(self) -> None:
         """Stop every application and clear queued launches."""
 
         self._startup_queue.clear()
         self._queued_ids.clear()
+        for cancellation in self._startup_cancellations.values():
+            cancellation.set()
         self._starting_ids.clear()
         self._launch_tokens.clear()
         self._active_launch_tokens.clear()
-        self._log_completed_tokens.clear()
         self._browser_opened_tokens.clear()
         self._user_stopped_ids.clear()
         self.process_manager.stop_all()
@@ -356,18 +560,27 @@ class MainWindow(QMainWindow):
         raise KeyError(app_id)
 
     def _open_url(self, url: str) -> None:
-        """Open a local app URL using the desktop shell."""
+        """Open a local app URL without loading the user's browser extensions."""
 
+        if os.name == "nt":
+            if open_isolated_browser(url):
+                return
+            QMessageBox.warning(
+                self,
+                "Secure browser unavailable",
+                "Microsoft Edge could not be opened in an isolated Guest window.",
+            )
+            return
         opened = QDesktopServices.openUrl(QUrl(url))
-        if not opened and os.name == "nt":
-            os.startfile(url)  # type: ignore[attr-defined]
+        if not opened:
+            LOG.error("Desktop browser could not open local URL")
 
     def _verified_open_url(self, app_id: str, state) -> str | None:
         """Return a cache-busted URL only when it matches the live tracked process."""
 
         if not state or not state.url or not state.process or state.process.poll() is not None:
             return None
-        if urlparse(state.url).port != state.port:
+        if HealthChecker._port_from_url(state.url) != state.port:
             return None
         token = self._launch_tokens.get(app_id)
         if not token:
@@ -389,37 +602,26 @@ class MainWindow(QMainWindow):
             parts.append(f"{self._active_startups} starting")
         if queued:
             parts.append(f"{queued} queued")
-        self.startup_summary.setText("   â€¢   ".join(parts))
-
-    def _sync_ready_logs(self) -> None:
-        """Promote cards to Running as soon as Streamlit writes a ready URL."""
-
-        for app_id in list(self._starting_ids):
-            token = self._launch_tokens.get(app_id)
-            if not token:
-                continue
-            state = self.process_manager.get(app_id)
-            if not state or not state.log_path:
-                continue
-            ready_url = HealthChecker.streamlit_ready_url_from_log(state.log_path, expected_port=state.port)
-            if not ready_url:
-                continue
-            updated = self.process_manager.mark_running_from_url(app_id, ready_url)
-            if not updated:
-                continue
-            if token in self._active_launch_tokens:
-                self._active_launch_tokens.discard(token)
-                self._active_startups = max(0, self._active_startups - 1)
-                self._log_completed_tokens.add(token)
-            self._starting_ids.discard(app_id)
-            self._update_startup_summary()
-            self.cards[app_id].set_status(ApplicationStatus.RUNNING)
-            self._start_next_queued_app()
+        self.startup_summary.setText(" | ".join(parts))
+        summary_state = "busy" if self._active_startups or queued else "active" if running else "idle"
+        self.startup_summary.setProperty("state", summary_state)
+        self.startup_summary.style().unpolish(self.startup_summary)
+        self.startup_summary.style().polish(self.startup_summary)
+        self.stop_all_button.setEnabled(bool(running or self._active_startups or queued))
 
     def _sync_process_liveness(self) -> None:
-        """Mark cards Failed when a running app process has died."""
+        """Reconcile delayed startup signals and detect dead app processes."""
 
         for state in self.process_manager.running_states():
+            if (
+                state.status == ApplicationStatus.RUNNING
+                and state.app_id in self._starting_ids
+                and self.thread_pool.activeThreadCount() == 0
+            ):
+                token = self._launch_tokens.get(state.app_id)
+                if token:
+                    self._start_finished(state.app_id, token, state)
+                continue
             if state.status != ApplicationStatus.RUNNING:
                 continue
             if state.process and state.process.poll() is not None:
@@ -433,10 +635,11 @@ class MainWindow(QMainWindow):
         self._update_startup_summary()
 
     def closeEvent(self, event) -> None:
-        if self.config.launcher.stop_apps_on_exit and self.process_manager.running_states():
+        has_active_apps = bool(self.process_manager.running_states() or self._starting_ids or self._queued_ids)
+        if self.config.launcher.stop_apps_on_exit and has_active_apps:
             response = QMessageBox.question(self, "Close launcher", "Stop running applications and close the launcher?")
             if response != QMessageBox.StandardButton.Yes:
                 event.ignore()
                 return
-            self.process_manager.stop_all()
+            self.stop_all_apps()
         super().closeEvent(event)

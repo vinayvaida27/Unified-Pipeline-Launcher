@@ -114,6 +114,7 @@ def _load_app_manifest_data(app_dir: Path, data: dict) -> ApplicationManifest:
             startup_timeout_seconds=int(launch_data.get("startup_timeout_seconds", 60)),
         ),
         app_dir=app_dir.resolve(),
+        archived=bool(data.get("archived", False)),
     )
 
 

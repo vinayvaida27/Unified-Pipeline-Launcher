@@ -3,8 +3,8 @@
     ONE-TIME admin setup for network drive deployments.
 
 .DESCRIPTION
-    Reads every app from apps/apps.json, collects all requirements.txt files,
-    and installs every package directly into the bundled runtime's site-packages.
+    Reads every app from the app registry, collects all requirements.txt files,
+    and installs packages into a staged copy before validating and replacing it.
     After this runs once, ALL users get instant app launches -- no venv creation,
     no pip install, no waiting.
 
@@ -12,58 +12,55 @@
       - Once after placing the release folder on the network drive.
       - Again whenever you add a new app or bump a package version.
 
-    Requires: write access to the src\runtime/ folder (admin or share owner only).
+    Requires write access to the bundled runtime folder.
 
 .PARAMETER ReleaseDir
-    Path to the public folder that contains src\ and apps\.
-    Auto-detected: checks build\Unified-Streamlit-Launcher\ first, then the
+    Path to the repository or portable release folder.
+    Auto-detected: checks build\Unified-Pipeline-Launcher\ first, then the
     repo root itself (so you can run this directly from a repo on a network drive).
 
 .EXAMPLE
     .\src\scripts\prepare_shared_runtime.ps1
-    .\src\scripts\prepare_shared_runtime.ps1 -ReleaseDir "Z:\Vinay Vaida\Unified-Streamlit-Launcher"
+    .\src\scripts\prepare_shared_runtime.ps1 -ReleaseDir "Z:\Unified-Pipeline-Launcher"
 #>
 
 param(
-    [string]$ReleaseDir = ""
+    [string]$ReleaseDir = "",
+    [switch]$Upgrade
 )
 
 $ErrorActionPreference = "Stop"
+. (Join-Path $PSScriptRoot "common.ps1")
+if ($ReleaseDir -ne "") { $ReleaseDir = Normalize-LauncherPathInput $ReleaseDir }
+Clear-LauncherPythonEnvironment
 
-# â”€â”€ Auto-detect the release / repo root â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 if ($ReleaseDir -eq "") {
     $SourceRoot = Split-Path -Parent $PSScriptRoot
     $ScriptParent = Split-Path -Parent $SourceRoot
-
-    # Option A: built release folder exists alongside repo
-    $BuildRelease = Join-Path $SourceRoot "build\Unified-Streamlit-Launcher"
-    if (Test-Path (Join-Path $BuildRelease "src\runtime\python.exe")) {
+    $BuildRelease = Join-Path $SourceRoot "build\Unified-Pipeline-Launcher"
+    if (Test-Path -LiteralPath (Join-Path $BuildRelease "runtime\python.exe")) {
         $ReleaseDir = $BuildRelease
     }
-    # Option B: running directly from the repo root (src\runtime\ is in the repo)
-    elseif (Test-Path (Join-Path $ScriptParent "src\runtime\python.exe")) {
+    elseif (Test-Path -LiteralPath (Join-Path $ScriptParent "src\runtime\python.exe")) {
         $ReleaseDir = $ScriptParent
     }
     else {
-        $ReleaseDir = $ScriptParent   # will fail below with a clear message
+        $ReleaseDir = $ScriptParent
     }
 }
 
-$ReleaseDir = Resolve-Path $ReleaseDir
+$ReleaseDir = Resolve-LauncherPath $ReleaseDir
 $SourceRoot = Join-Path $ReleaseDir "src"
-if (-not (Test-Path $SourceRoot)) {
-    $SourceRoot = $ReleaseDir
-}
+if (-not (Test-Path -LiteralPath $SourceRoot)) { $SourceRoot = $ReleaseDir }
 
 Write-Host ""
 Write-Host "============================================================"
-Write-Host "  Unified Streamlit Launcher -- Shared Runtime Setup"
+Write-Host "  Unified Pipeline Launcher -- Shared Runtime Setup"
 Write-Host "============================================================"
 Write-Host "Release folder : $ReleaseDir"
 
-# â”€â”€ Find the bundled Python â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 $Python = Join-Path $SourceRoot "runtime\python.exe"
-if (-not (Test-Path $Python)) {
+if (-not (Test-Path -LiteralPath $Python)) {
     Write-Error @"
 Bundled runtime not found at: $Python
 
@@ -72,24 +69,46 @@ then re-run this script.
 "@
     exit 1
 }
-Write-Host "Runtime python : $Python"
-$PythonVersion = & $Python --version 2>&1
-Write-Host "Python version : $PythonVersion"
 
-# â”€â”€ Read the app registry â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
-$AppsJson = Join-Path $ReleaseDir "apps\apps.json"
-if (-not (Test-Path $AppsJson)) {
+# Detect damaged distributions before uv attempts an in-place update. A missing
+# RECORD means the environment cannot be safely uninstalled/upgraded. Rebuild
+# a fresh staged base rather than modifying either the target or script runtime.
+$SitePackages = Join-Path $SourceRoot "runtime\Lib\site-packages"
+$BrokenDistInfo = @()
+if (Test-Path -LiteralPath $SitePackages) {
+    $BrokenDistInfo = @(
+        Get-ChildItem -LiteralPath $SitePackages -Directory -Filter "*.dist-info" -ErrorAction SilentlyContinue |
+            Where-Object { -not (Test-Path -LiteralPath (Join-Path $_.FullName "RECORD")) }
+    )
+    if ($BrokenDistInfo.Count -gt 0) {
+        Write-Warning "Damaged Python package metadata was detected:"
+        $BrokenDistInfo | ForEach-Object { Write-Warning "  $($_.Name) (missing RECORD)" }
+        Write-Host "A fresh Python base and all required packages will be prepared before replacement."
+    }
+}
+
+Write-Host "Runtime python : $Python"
+Assert-LauncherPythonRuntime $Python
+$PythonVersion = & $Python --version 2>&1
+if ($LASTEXITCODE -ne 0) { throw "Python version probe failed (exit code $LASTEXITCODE)." }
+Write-Host "Python version : $PythonVersion"
+$Uv = & (Join-Path $PSScriptRoot "ensure_uv.ps1")
+if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+Write-Host "Dependency tool: $(& $Uv --version)"
+
+$AppsRoot = Join-Path $ReleaseDir "apps"
+$AppsJson = Join-Path $AppsRoot "apps.json"
+if (-not (Test-Path -LiteralPath $AppsJson)) {
     Write-Error "App registry not found: $AppsJson"
     exit 1
 }
-$Registry = Get-Content $AppsJson -Raw | ConvertFrom-Json
+$Registry = Get-Content -LiteralPath $AppsJson -Raw | ConvertFrom-Json
 
-# â”€â”€ Collect all requirements.txt files â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 $AllRequirements = @()
 $AllWheelhouses  = @()
 
 $LauncherRequirements = Join-Path $SourceRoot "requirements-launcher.txt"
-if (Test-Path $LauncherRequirements) {
+if (Test-Path -LiteralPath $LauncherRequirements) {
     $AllRequirements += $LauncherRequirements
     Write-Host "  Found launcher requirements: requirements-launcher.txt"
 } else {
@@ -99,88 +118,125 @@ if (Test-Path $LauncherRequirements) {
 
 foreach ($App in $Registry.applications) {
     if ($App.enabled -eq $false) { continue }
-
-    $AppFolder = Join-Path $ReleaseDir "apps\$($App.folder)"
-    $ReqFile   = Join-Path $AppFolder "requirements.txt"
-
-    if (Test-Path $ReqFile) {
+    $AppFolder = Join-Path $AppsRoot $App.folder
+    $ReqFile = Join-Path $AppFolder "requirements.txt"
+    if (Test-Path -LiteralPath $ReqFile) {
         $AllRequirements += $ReqFile
         Write-Host "  Found requirements: apps\$($App.folder)\requirements.txt"
     } else {
         Write-Host "  (no requirements.txt for $($App.name))"
     }
-
     $WheelDir = Join-Path $AppFolder "wheelhouse"
-    if (Test-Path $WheelDir) {
+    if ((Test-Path -LiteralPath $WheelDir) -and @(Get-ChildItem -LiteralPath $WheelDir -File -ErrorAction SilentlyContinue).Count -gt 0) {
         $AllWheelhouses += $WheelDir
     }
 }
 
-# â”€â”€ Merge into a temp file â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
-$TempReq = [System.IO.Path]::GetTempFileName() + ".txt"
-$Lines   = @("# Auto-generated by prepare_shared_runtime.ps1")
+$RuntimeDir = Join-Path $SourceRoot "runtime"
+Invoke-LauncherRuntimeUpdate -RuntimeDir $RuntimeDir -Build {
+param($Stage)
+if ($BrokenDistInfo.Count -gt 0) {
+    $BaseRuntime = Join-Path $Stage "python-base"
+    $null = Get-LauncherRelativePath -BasePath $Stage -Path $BaseRuntime
+    $RebuildVersion = $PythonVersion.ToString().Trim() -replace '^Python\s+', ''
+    & (Join-Path $PSScriptRoot "fetch_runtime.ps1") -Version $RebuildVersion -RuntimeDir $BaseRuntime
+    if ($LASTEXITCODE -ne 0) { throw "Staged Python base preparation failed (exit code $LASTEXITCODE)." }
+    Get-ChildItem -LiteralPath $BaseRuntime -Force | ForEach-Object {
+        Move-Item -LiteralPath $_.FullName -Destination $Stage
+    }
+    [IO.Directory]::Delete($BaseRuntime)
+    Remove-Item -LiteralPath "$BaseRuntime.update.lock" -Force
+} else {
+    Write-Host "Copying current runtime to a staging folder..."
+    Get-ChildItem -LiteralPath $RuntimeDir -Force | ForEach-Object {
+        Copy-Item -LiteralPath $_.FullName -Destination $Stage -Recurse -Force
+    }
+}
+$InstallPython = Join-Path $RuntimeDir "python.exe"
+$TempReq = [System.IO.Path]::GetTempFileName()
+try {
+$Lines = @("# Auto-generated by prepare_shared_runtime.ps1")
 foreach ($ReqFile in $AllRequirements) {
     $Lines += "# --- $ReqFile ---"
-    $Lines += Get-Content $ReqFile
+    $Lines += Get-Content -LiteralPath $ReqFile
 }
-$Lines | Set-Content -Path $TempReq -Encoding UTF8
+$Lines | Set-Content -LiteralPath $TempReq -Encoding UTF8
 Write-Host ""
 Write-Host "Merged $($AllRequirements.Count) requirements file(s)."
 
-# â”€â”€ Upgrade pip â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
-Write-Host "Upgrading pip..."
-& $Python -m pip install --upgrade pip --quiet
-if ($LASTEXITCODE -ne 0) { Write-Warning "pip upgrade failed (non-fatal, continuing)" }
-
-# â”€â”€ Install packages â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 Write-Host ""
 Write-Host "Installing all packages into shared runtime..."
 Write-Host "(This may take a few minutes on first run.)"
 Write-Host ""
 
-$PipArgs = @("-m", "pip", "install", "--no-warn-script-location")
+# The uv cache is normally local while this runtime may be on a mapped/UNC
+# filesystem. Windows hardlinks cannot cross filesystems, so request copy mode
+# directly instead of failing a hardlink attempt and then falling back.
+# --prefix writes packages into the candidate while generated Windows console
+# scripts reference the selected interpreter at its final, stable runtime path.
+$UvArgs = @("pip", "install", "--python", $InstallPython, "--prefix", $Stage, "--no-config", "--link-mode=copy")
+if ($Upgrade) { $UvArgs += "--upgrade" }
 
 if ($AllWheelhouses.Count -gt 0) {
-    Write-Host "Using offline wheelhouse(s) for faster install."
-    $PipArgs += "--prefer-binary"
+    Write-Host "Trying local wheelhouse(s) without network access."
     foreach ($WheelDir in $AllWheelhouses) {
-        $PipArgs += "--find-links"
-        $PipArgs += $WheelDir
+        $UvArgs += "--find-links"
+        $UvArgs += $WheelDir
     }
 }
 
-$PipArgs += "-r"
-$PipArgs += $TempReq
+$UvArgs += "-r"
+$UvArgs += $TempReq
 
-& $Python @PipArgs
-$ExitCode = $LASTEXITCODE
-
-Remove-Item $TempReq -Force -ErrorAction SilentlyContinue
+if ($AllWheelhouses.Count -gt 0) {
+    & $Uv @UvArgs --offline
+    $ExitCode = $LASTEXITCODE
+    if ($ExitCode -ne 0) {
+        Write-Host "Local wheelhouses were incomplete; retrying with the package index."
+        & $Uv @UvArgs
+        $ExitCode = $LASTEXITCODE
+    }
+} else {
+    & $Uv @UvArgs
+    $ExitCode = $LASTEXITCODE
+}
 
 if ($ExitCode -ne 0) {
-    Write-Error "Package installation failed (exit code $ExitCode)."
-    exit $ExitCode
+    throw "Package installation failed (exit code $ExitCode). The existing runtime was preserved."
 }
 
-# â”€â”€ Verify â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
-Write-Host ""
-Write-Host "Verifying launcher and Streamlit imports..."
-& $Python -c "from PySide6.QtWidgets import QApplication; import streamlit; print('  PySide6 and streamlit OK')"
-if ($LASTEXITCODE -ne 0) {
-    Write-Error "PySide6 or Streamlit import failed after installation."
-    exit 1
+# Store a relocatable marker: no absolute release path or requirement paths.
+# Get-LauncherRelativePath is compatible with Windows PowerShell 5.1, unlike
+# [IO.Path]::GetRelativePath(), which exists only on newer .NET runtimes.
+$RequirementSummary = @()
+foreach ($ReqFile in $AllRequirements) {
+    $Relative = Get-LauncherRelativePath -BasePath $ReleaseDir -Path $ReqFile
+    $Hash = (Get-FileHash -LiteralPath $ReqFile -Algorithm SHA256).Hash.ToLowerInvariant()
+    $RequirementSummary += [pscustomobject]@{ path = $Relative; sha256 = $Hash }
 }
-
-# â”€â”€ Write marker â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 $Marker = @{
-    prepared_at   = (Get-Date -Format "o")
-    python        = $PythonVersion.ToString()
-    release_dir   = $ReleaseDir.ToString()
-    requirements  = $AllRequirements
-} | ConvertTo-Json -Depth 3
+    prepared_at  = (Get-Date -Format "o")
+    python       = $PythonVersion.ToString()
+    installer    = "uv"
+    uv_version   = (& $Uv --version).ToString()
+    requirements = $RequirementSummary
+} | ConvertTo-Json -Depth 4
 
-$MarkerPath = Join-Path $SourceRoot "runtime\.shared_runtime_ready.json"
-$Marker | Set-Content -Path $MarkerPath -Encoding UTF8
+$MarkerPath = Join-Path $Stage ".shared_runtime_ready.json"
+$Marker | Set-Content -LiteralPath $MarkerPath -Encoding UTF8
+} finally {
+    Remove-Item -LiteralPath $TempReq -Force -ErrorAction SilentlyContinue
+}
+} -Validate {
+    param($Stage)
+    $Python = Join-Path $Stage "python.exe"
+    Write-Host "Verifying staged runtime dependencies and imports..."
+    & $Uv pip check --python $Python --no-config
+    if ($LASTEXITCODE -ne 0) { throw "Shared runtime dependency check failed." }
+    Assert-LauncherPythonRuntime $Python
+    & $Python -I -c "import encodings, pandas; from PySide6.QtWidgets import QApplication; import streamlit; print('  encodings, pandas, PySide6 and streamlit OK')"
+    if ($LASTEXITCODE -ne 0) { throw "Runtime import validation failed after installation." }
+}
 
 Write-Host ""
 Write-Host "============================================================"
