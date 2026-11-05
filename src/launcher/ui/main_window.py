@@ -68,6 +68,7 @@ class MainWindow(QMainWindow):
         self._archived_ids = {app.id for app in apps if app.archived}
         self._filtered_app_ids = [app.id for app in apps if app.id not in self._archived_ids]
         self._column_count = 0
+        self._laid_out_app_ids: tuple[str, ...] = ()
         self._startup_queue: deque[str] = deque()
         self._queued_ids: set[str] = set()
         self._starting_ids: set[str] = set()
@@ -363,9 +364,11 @@ class MainWindow(QMainWindow):
         if not hasattr(self, "app_scroll"):
             return
         columns = self._desired_column_count(width)
-        if not force and columns == self._column_count:
+        visible_ids = tuple(self._filtered_app_ids)
+        if columns == self._column_count and visible_ids == self._laid_out_app_ids:
             return
         self._column_count = columns
+        self._laid_out_app_ids = visible_ids
         for card in self.cards.values():
             self.grid.removeWidget(card)
             card.hide()

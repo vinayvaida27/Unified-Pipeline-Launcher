@@ -46,6 +46,19 @@ These are local measurements, not network-drive or packaged-EXE results.
 - Existing app discovery uses sets for duplicate IDs and sorted one-pass output.
 - Existing UI startup and app launches remain bounded by the configured worker
   limit and startup timeout.
+- Icon decoding is cached by path, size, and modification time, so repeated
+  fallback or shared icons do not perform repeated disk decode work.
+- Filter relayouts now short-circuit when the visible application ID/order set
+  is unchanged.
+
+The regression gate is:
+
+```powershell
+& .\src\runtime\python.exe .\benchmarks\performance_gate.py
+```
+
+It uses median repeated process measurements and fails above 1000 ms for
+launcher import or 500 ms for configuration plus discovery.
 
 ## Validation
 
@@ -66,3 +79,9 @@ Mapped-drive and UNC latency, antivirus impact, SmartScreen behavior, and
 domain runtime repair require validation on the target Windows environment.
 No new telemetry, automatic package upgrades, or unbounded concurrency were
 introduced.
+
+Event-driven SMB notifications, persistent metadata caching, and progressive
+first-window rendering were not added: the repository has no repeatable SMB
+fixture here, and making those changes would risk showing stale registry data
+before the existing validation path completes. They remain candidates for a
+target-machine experiment with measured network latency.

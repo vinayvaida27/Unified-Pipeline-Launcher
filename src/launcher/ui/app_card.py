@@ -2,11 +2,23 @@
 
 from __future__ import annotations
 
+from functools import lru_cache
+
 from PySide6.QtCore import Qt, Signal
 from PySide6.QtGui import QPixmap
 from PySide6.QtWidgets import QFrame, QHBoxLayout, QLabel, QMenu, QPushButton, QToolButton, QVBoxLayout
 
 from ..models import ApplicationManifest, ApplicationStatus
+
+
+@lru_cache(maxsize=256)
+def _icon_pixmap(path: str, size: int, modified_ns: int) -> QPixmap:
+    """Decode and resize an icon once per file version on the Qt thread."""
+
+    pixmap = QPixmap(path)
+    if pixmap.isNull():
+        return pixmap
+    return pixmap.scaled(size, size, Qt.AspectRatioMode.KeepAspectRatio, Qt.TransformationMode.SmoothTransformation)
 
 
 class AppCard(QFrame):
@@ -26,9 +38,13 @@ class AppCard(QFrame):
 
         self.icon_label = QLabel()
         self.icon_label.setFixedSize(40, 40)
-        pixmap = QPixmap(str(app.icon))
+        try:
+            modified_ns = app.icon.stat().st_mtime_ns
+        except OSError:
+            modified_ns = 0
+        pixmap = _icon_pixmap(str(app.icon), 40, modified_ns)
         if not pixmap.isNull():
-            self.icon_label.setPixmap(pixmap.scaled(40, 40, Qt.AspectRatioMode.KeepAspectRatio, Qt.TransformationMode.SmoothTransformation))
+            self.icon_label.setPixmap(pixmap)
         self.title = QLabel(app.name)
         self.title.setObjectName("title")
         self.title.setToolTip(app.name)
