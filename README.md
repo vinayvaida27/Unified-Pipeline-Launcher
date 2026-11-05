@@ -264,26 +264,28 @@ Unified-Pipeline-Launcher/
 
 ## Architecture context
 
-This is a deliberately small, local-first desktop launcher:
+The launcher files can live on a mounted network drive, while the UI,
+Streamlit processes, and browser run on the user's Windows computer:
 
 ```text
-apps/apps.json
-    -> launcher.app_discovery (validate registry, resolve app folders)
-    -> launcher.process_manager + port_manager (start/monitor Streamlit)
-    -> launcher.ui.main_window (filters, cards, archive/restore actions)
-    -> launcher.secure_browser (loopback-only, extension-free Edge session)
-
-src/config + runtime paths -> launcher.config / runtime_validation
-src/scripts               -> dependency, build, release workflows
-src/tests                  -> registry, path, process, browser, and UI checks
+User
+  -> START_LAUNCHER on the mounted network drive
+  -> bundled Python 3.11.9 and launcher code on that drive
+  -> Unified Pipeline Launcher UI on Windows
+  -> Streamlit apps as local Python processes
+  -> 127.0.0.1:<dynamic-port>
+  -> browser on the same Windows computer
 ```
 
-Data flow is intentionally one-way: the registry is read at startup, app
-processes bind to `127.0.0.1`, and the browser receives only a verified
-loopback URL. Archive changes write only `archived` in `apps/apps.json` using a
-temporary file and atomic replacement. Browser profiles are per-app temporary
-directories and are cleaned up at stop/restart/launcher exit; app runtime
-caches are separate and are not erased by browser cleanup.
+The network drive contains `START_LAUNCHER`, the bundled runtime, launcher
+source, and Streamlit app files. Execution stays on Windows: app servers bind
+only to `127.0.0.1`, so other computers on the same Wi-Fi cannot open them.
+The browser displays all Streamlit frontends locally. The launcher does not
+require external APIs or cloud services.
+
+Archive changes write only `archived` in `apps/apps.json` using a temporary
+file and atomic replacement. Browser profiles are per-app temporary
+directories and are cleaned up at stop, restart, or launcher exit.
 
 Understand-Anything can generate `.ua/knowledge-graph.json` for deeper future
 LLM exploration; this section is the stable human-readable context when the
