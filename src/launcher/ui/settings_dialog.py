@@ -5,15 +5,18 @@ from __future__ import annotations
 from pathlib import Path
 import re
 
+from PySide6.QtCore import QThreadPool
 from PySide6.QtWidgets import (
-    QDialog, QDialogButtonBox, QFileDialog, QFormLayout, QGroupBox, QLabel,
+    QDialog, QFileDialog, QFormLayout, QGroupBox, QLabel,
     QLineEdit, QMessageBox, QPushButton, QToolButton, QVBoxLayout,
 )
 
 from ..app_discovery import discover_apps
 from ..app_registry import add_application
+from ..dependency_manager import update_runtime_dependencies
 from ..exceptions import LauncherError
 from ..models import PlatformConfig
+from .workers import Worker
 
 
 class SettingsDialog(QDialog):
@@ -23,6 +26,7 @@ class SettingsDialog(QDialog):
         super().__init__(parent)
         self.config = config
         self.on_saved = on_saved
+        self.thread_pool = QThreadPool(self)
         self.setWindowTitle("Settings")
         layout = QVBoxLayout(self)
         layout.addWidget(QLabel(f"Local cache: {config.paths.local_cache_directory}"))
@@ -58,7 +62,39 @@ class SettingsDialog(QDialog):
         advanced_form.addRow("Version", self.version)
         self.add_button = QPushButton("Add application")
         self.add_button.clicked.connect(self._save)
-        layout.addWidget(group); layout.addWidget(advanced); layout.addWidget(advanced_box); layout.addWidget(self.error); layout.addWidget(self.add_button)
+        self.update_button = QPushButton("Scan and update Python packages")
+        self.update_button.clicked.connect(self._update_packages)
+        self.package_status = QLabel()
+        layout.addWidget(group); layout.addWidget(advanced); layout.addWidget(advanced_box); layout.addWidget(self.error); layout.addWidget(self.add_button); layout.addWidget(self.update_button); layout.addWidget(self.package_status)
+
+    def _update_packages(self) -> None:
+        self.update_button.setEnabled(False)
+        self.package_status.setText("Scanning applications…")
+
+        def work(progress):
+            return update_runtime_dependencies(
+                self.config.paths.apps_directory,
+                self.config.paths.runtime_python,
+                self.config.paths.local_cache_directory / "packages",
+                progress=progress,
+            )
+
+        worker = Worker(work)
+        worker.signals.progress.connect(self.package_status.setText)
+        worker.signals.finished.connect(self._packages_updated)
+        worker.signals.failed.connect(lambda message, details: self._packages_failed(message))
+        self.thread_pool.start(worker)
+
+    def _packages_updated(self, result: dict) -> None:
+        self.update_button.setEnabled(True)
+        self.package_status.setText(
+            f"Package update complete: {len(result['missing'])} installed, "
+            f"{len(result['skipped'])} already available."
+        )
+
+    def _packages_failed(self, message: str) -> None:
+        self.update_button.setEnabled(True)
+        self.package_status.setText(f"Package update failed: {message}")
 
     def _browse_python(self) -> None:
         path, _ = QFileDialog.getOpenFileName(self, "Select Streamlit application", "", "Python files (*.py)")
