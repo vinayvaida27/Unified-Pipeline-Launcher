@@ -12,7 +12,17 @@ from pathlib import Path
 from .app_discovery import discover_apps
 from .path_utils import atomic_write_json
 
-PACKAGE_ALIASES = {"PIL": "Pillow", "cv2": "opencv-python", "sklearn": "scikit-learn", "yaml": "PyYAML"}
+PACKAGE_ALIASES = {
+    "Bio": "biopython",
+    "PIL": "Pillow",
+    "bs4": "beautifulsoup4",
+    "cv2": "opencv-python",
+    "dateutil": "python-dateutil",
+    "fitz": "pymupdf",
+    "skimage": "scikit-image",
+    "sklearn": "scikit-learn",
+    "yaml": "PyYAML",
+}
 PACKAGE_IMPORTS = {value: key for key, value in PACKAGE_ALIASES.items()}
 
 
