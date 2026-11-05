@@ -8,7 +8,10 @@ $SourceRoot = Join-Path $Root "src"
 $Pythonw = Join-Path $SourceRoot "runtime\pythonw.exe"
 $Output = Join-Path $Root "Unified-Pipeline-Launcher.exe"
 $Staged = "$Output.staging"
+$SourceFile = "$Output.staging.cs"
+$Icon = Join-Path $SourceRoot "assets\launcher\launcher.ico"
 if (-not (Test-Path -LiteralPath $Pythonw)) { throw "Missing bundled runtime: $Pythonw" }
+if (-not (Test-Path -LiteralPath $Icon)) { throw "Launcher icon is missing: $Icon" }
 if ([string]::IsNullOrWhiteSpace($ConfigPath)) { $ConfigPath = Join-Path $SourceRoot "config\launcher_config.json" }
 $ConfigPath = (Resolve-Path -LiteralPath $ConfigPath).Path
 if (-not $ConfigPath.StartsWith($Root + "\", [StringComparison]::OrdinalIgnoreCase)) { throw "ConfigPath must be inside the repository root: $ConfigPath" }
@@ -36,10 +39,19 @@ internal static class LauncherEntry {
     }
 }
 '@.Replace('__CONFIG_RELATIVE__', $RelativeConfig)
+Set-Content -LiteralPath $SourceFile -Value $source -Encoding UTF8
+$CompilerCandidates = @(
+    (Join-Path $env:WINDIR "Microsoft.NET\Framework64\v4.0.30319\csc.exe"),
+    (Join-Path $env:WINDIR "Microsoft.NET\Framework\v4.0.30319\csc.exe")
+)
+$Compiler = $CompilerCandidates | Where-Object { Test-Path -LiteralPath $_ } | Select-Object -First 1
+if (-not $Compiler) { throw "Microsoft .NET Framework csc.exe was not found. Install the .NET Framework developer tools." }
 Remove-Item -LiteralPath $Staged -Force -ErrorAction SilentlyContinue
-Add-Type -TypeDefinition $source -OutputAssembly $Staged -OutputType WindowsApplication -ReferencedAssemblies @("System.dll", "System.Windows.Forms.dll")
-if (-not (Test-Path -LiteralPath $Staged)) { throw "EXE compilation did not produce $Staged" }
+& $Compiler /nologo /target:winexe /out:$Staged /win32icon:$Icon /reference:System.dll /reference:System.Windows.Forms.dll $SourceFile
+if ($LASTEXITCODE -ne 0 -or -not (Test-Path -LiteralPath $Staged)) { throw "C# launcher compilation failed with exit code $LASTEXITCODE" }
 Move-Item -LiteralPath $Staged -Destination $Output -Force
+Remove-Item -LiteralPath $SourceFile -Force -ErrorAction SilentlyContinue
 Write-Host "Created: $Output" -ForegroundColor Green
 Write-Host "Runtime: $Pythonw"
 Write-Host "Config : $ConfigPath"
+Write-Host "Icon   : $Icon"
