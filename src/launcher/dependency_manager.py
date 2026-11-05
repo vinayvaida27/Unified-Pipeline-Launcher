@@ -7,6 +7,7 @@ import json
 import os
 import subprocess
 import sys
+import re
 from datetime import datetime, timezone
 from pathlib import Path
 
@@ -58,12 +59,47 @@ PACKAGE_ALIASES = {
     "yaml": "PyYAML",
 }
 PACKAGE_IMPORTS = {value: key for key, value in PACKAGE_ALIASES.items()}
+REQUIREMENT_PATTERN = re.compile(r"^[A-Za-z0-9_.-]+(?:\[[A-Za-z0-9_,.-]+\])?(?:[<>=!~].+)?$")
 
 
 def distribution_name_for_import(module: str) -> str:
     """Map a top-level Python import to its PyPI distribution name."""
 
     return PACKAGE_ALIASES.get(module, module)
+
+
+def install_named_package(runtime_python: Path, state_directory: Path, requirement: str, progress=None) -> dict[str, str]:
+    """Install one administrator/user-supplied distribution safely."""
+
+    requirement = requirement.strip()
+    if not REQUIREMENT_PATTERN.fullmatch(requirement):
+        raise ValueError("Enter a valid package name, for example scikit-learn or pandas>=2.0")
+    state_directory.mkdir(parents=True, exist_ok=True)
+    _ensure_runtime_writable(runtime_python)
+    if progress:
+        progress(f"installing|{requirement}")
+    result = subprocess.run(
+        [
+            str(runtime_python), "-I", "-m", "pip", "install", "--disable-pip-version-check",
+            "--no-input", "--prefer-binary", "--retries", "5", "--timeout", "30",
+            "--cache-dir", str(state_directory / "pip-cache"), requirement,
+        ],
+        capture_output=True,
+        text=True,
+        check=False,
+        timeout=1800,
+    )
+    if result.returncode != 0:
+        detail = (result.stderr or result.stdout or "pip returned a failure").strip().splitlines()[-1]
+        (state_directory / "package-update-errors.log").write_text(f"{requirement}: {detail}\n", encoding="utf-8")
+        if progress:
+            progress(f"failed|{requirement}|{detail}")
+        return {"package": requirement, "status": "failed", "details": detail}
+    if progress:
+        progress(f"installed|{requirement}")
+    with (state_directory / "manual-packages.txt").open("a", encoding="utf-8") as handle:
+        handle.write(requirement + "\n")
+    return {"package": requirement, "status": "installed", "details": "Installed successfully"}
 
 
 def scan_python_dependencies(apps_directory: Path) -> list[str]:

@@ -13,7 +13,7 @@ from PySide6.QtWidgets import (
 
 from ..app_discovery import discover_apps
 from ..app_registry import add_application
-from ..dependency_manager import update_runtime_dependencies
+from ..dependency_manager import install_named_package, update_runtime_dependencies
 from ..exceptions import LauncherError
 from ..models import PlatformConfig
 from .workers import Worker
@@ -64,12 +64,45 @@ class SettingsDialog(QDialog):
         self.add_button.clicked.connect(self._save)
         self.update_button = QPushButton("Scan and update Python packages")
         self.update_button.clicked.connect(self._update_packages)
+        self.manual_package = QLineEdit()
+        self.manual_package.setPlaceholderText("e.g. scikit-learn or pandas>=2.0")
+        self.manual_button = QPushButton("Install named package")
+        self.manual_button.clicked.connect(self._install_named_package)
         self.package_status = QLabel()
         self.package_table = QTableWidget(0, 3)
         self.package_table.setHorizontalHeaderLabels(("Library", "Status", "Details"))
         self.package_table.setMinimumHeight(130)
         self.package_table.horizontalHeader().setStretchLastSection(True)
-        layout.addWidget(group); layout.addWidget(advanced); layout.addWidget(advanced_box); layout.addWidget(self.error); layout.addWidget(self.add_button); layout.addWidget(self.update_button); layout.addWidget(self.package_status); layout.addWidget(self.package_table)
+        manual_row = QVBoxLayout(); manual_row.addWidget(self.manual_package); manual_row.addWidget(self.manual_button)
+        layout.addWidget(group); layout.addWidget(advanced); layout.addWidget(advanced_box); layout.addWidget(self.error); layout.addWidget(self.add_button); layout.addWidget(self.update_button); layout.addLayout(manual_row); layout.addWidget(self.package_status); layout.addWidget(self.package_table)
+
+    def _install_named_package(self) -> None:
+        requirement = self.manual_package.text().strip()
+        self.manual_button.setEnabled(False)
+        self.package_status.setText(f"Installing {requirement}…")
+
+        def work(progress):
+            return install_named_package(
+                self.config.paths.runtime_python,
+                self.config.paths.local_cache_directory / "packages",
+                requirement,
+                progress=progress,
+            )
+
+        worker = Worker(work)
+        worker.signals.progress.connect(self._package_progress)
+        worker.signals.finished.connect(self._manual_package_finished)
+        worker.signals.failed.connect(lambda message, details: self._manual_package_failed(message))
+        self.thread_pool.start(worker)
+
+    def _manual_package_finished(self, result: dict) -> None:
+        self.manual_button.setEnabled(True)
+        self._set_package_status(result["package"], "✓ Installed" if result["status"] == "installed" else "✕ Failed", result["details"])
+        self.package_status.setText(result["details"])
+
+    def _manual_package_failed(self, message: str) -> None:
+        self.manual_button.setEnabled(True)
+        self.package_status.setText(f"Package install failed: {message}")
 
     def _update_packages(self) -> None:
         self.update_button.setEnabled(False)

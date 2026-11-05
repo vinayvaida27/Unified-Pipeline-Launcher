@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import json
 
-from launcher.dependency_manager import distribution_name_for_import, scan_python_dependencies, update_runtime_dependencies
+from launcher.dependency_manager import distribution_name_for_import, install_named_package, scan_python_dependencies, update_runtime_dependencies
 
 
 def test_maps_common_imports_to_distribution_names():
@@ -12,6 +12,12 @@ def test_maps_common_imports_to_distribution_names():
     assert distribution_name_for_import("pythoncom") == "pywin32"
     assert distribution_name_for_import("win32com") == "pywin32"
     assert distribution_name_for_import("pandas") == "pandas"
+
+
+def test_manual_package_validation_rejects_shell_text(tmp_path):
+    import pytest
+    with pytest.raises(ValueError):
+        install_named_package(tmp_path / "python.exe", tmp_path / "state", "scikit-learn; whoami")
 
 
 def test_scans_unique_third_party_imports(copied_apps, tmp_path):
