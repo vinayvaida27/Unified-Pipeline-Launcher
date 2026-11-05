@@ -35,7 +35,7 @@ shell.CurrentDirectory = srcRoot
 
 If fso.FileExists(launcherBat) Then
     comspec = shell.ExpandEnvironmentStrings("%ComSpec%")
-    command = """" & comspec & """ /d /c call """ & launcherBat & """ --silent"
+    command = """" & comspec & """ /d /c call """ & launcherBat & """ --silent --source"
 ElseIf fso.FileExists(launcherExe) Then
     command = """" & launcherExe & """"
 ElseIf fso.FileExists(pythonw) Then

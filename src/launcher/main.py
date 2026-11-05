@@ -16,6 +16,7 @@ from .local_cache import LocalCacheManager
 from .logging_setup import configure_logging
 from .process_manager import ProcessManager
 from .runtime_downloader import RuntimeDownloader
+from .single_instance import SingleInstance
 
 LOG = logging.getLogger(__name__)
 
@@ -100,6 +101,10 @@ def main(argv: list[str] | None = None) -> int:
     if not icon.isNull():
         qt_app.setWindowIcon(icon)
 
+    instance = SingleInstance(installation_root(), lambda: None)
+    if not instance.acquire():
+        return 0
+
     try:
         config = load_platform_config(resolve_config_path(args.config))
         cache = LocalCacheManager(config.paths.local_cache_directory)
@@ -141,6 +146,11 @@ def main(argv: list[str] | None = None) -> int:
     from .ui.main_window import MainWindow
 
     window = MainWindow(config, apps, env_manager, process_manager)
+    instance._on_activate = lambda: (
+        window.showNormal(),
+        window.raise_(),
+        window.activateWindow(),
+    )
     window.show()
     _apply_windows_dark_titlebar(window)
     result = qt_app.exec()

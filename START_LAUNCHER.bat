@@ -19,7 +19,7 @@ set "PYTHONUSERBASE="
 set "PYTHONNOUSERSITE=1"
 if not exist "%PYTHON%" goto missing_runtime
 if not exist "%CONFIG%" goto missing_config
-pushd "%SRC%" || goto inaccessible_source
+cd /d "%SRC%" || goto inaccessible_source
 "%PYTHON%" -I -c "import encodings,os,sys; root=os.path.normcase(os.path.realpath(os.path.dirname(sys.executable))); paths=(sys.prefix,sys.exec_prefix,sys.base_prefix,encodings.__file__); raise SystemExit(0 if all(os.path.commonpath((root,os.path.normcase(os.path.realpath(p))))==root for p in paths) else 86)"
 if errorlevel 1 goto invalid_runtime
 "%PYTHON%" -I -c "from PySide6.QtWidgets import QApplication; import streamlit"
@@ -28,7 +28,7 @@ if not exist "%EXE%" (
   "%PYTHON%" -E -s -c "import launcher"
   if errorlevel 1 goto invalid_source
 )
-if exist "%EXE%" if "%SOURCE%"=="0" (
+if exist "%EXE%" if "%SOURCE%"=="0" if "%DEBUG%"=="0" (
   start "" /wait "%EXE%" --config "%CONFIG%" --no-local-cache
 ) else if "%DEBUG%"=="1" (
   "%PYTHON%" -E -s -m launcher --config "%CONFIG%" --no-local-cache
@@ -36,7 +36,7 @@ if exist "%EXE%" if "%SOURCE%"=="0" (
   start "" /wait "%PYTHONW%" -E -s -m launcher --config "%CONFIG%" --no-local-cache
 )
 set "EXITCODE=%ERRORLEVEL%"
-popd
+cd /d "%ROOT%" >nul 2>&1
 if "%EXITCODE%"=="0" exit /b 0
 echo ERROR: Launcher exited with code %EXITCODE%.
 if "%SILENT%"=="0" pause
