@@ -176,6 +176,16 @@ def update_runtime_dependencies(
                 progress(f"failed|{package}|{detail}")
         if progress:
             progress(f"Packages: {len(installed)} installed, {len(failed)} failed")
+    # A successful pip exit does not guarantee the import is available in the
+    # same bundled interpreter; verify before reporting success to the user.
+    still_missing = set(_missing_packages(runtime_python, installed)) if installed else set()
+    for package in list(installed):
+        if package in still_missing:
+            installed.remove(package)
+            failed.append(package)
+            failures.append(f"{package}: installed but import verification failed")
+            if progress:
+                progress(f"failed|{package}|installed but import verification failed")
     (state_directory / "package-update-errors.log").write_text("\n".join(failures) + ("\n" if failures else ""), encoding="utf-8")
     skipped = [package for package in packages if package not in missing]
     atomic_write_json(
