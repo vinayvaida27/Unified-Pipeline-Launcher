@@ -58,6 +58,10 @@ class MainWindow(QMainWindow):
         super().__init__()
         self.config = config
         self.apps = apps
+        self._apps_by_id = {app.id: app for app in apps}
+        self._app_search_text = {
+            app.id: f"{app.name} {app.description} {app.category}".lower() for app in apps
+        }
         self.environment_manager = environment_manager
         self.process_manager = process_manager
         self.cards: dict[str, AppCard] = {}
@@ -280,6 +284,8 @@ class MainWindow(QMainWindow):
             return
         self.apps = [refreshed.get(existing.id, existing) for existing in self.apps]
         self.apps.append(app)
+        self._apps_by_id[app.id] = app
+        self._app_search_text[app.id] = f"{app.name} {app.description} {app.category}".lower()
         self._archived_ids.discard(app_id)
         card = AppCard(app)
         card.action_clicked.connect(self._handle_card_action)
@@ -310,7 +316,7 @@ class MainWindow(QMainWindow):
         category = self.category.currentText()
         visible_ids = []
         for app in self.apps:
-            haystack = f"{app.name} {app.description} {app.category}".lower()
+            haystack = self._app_search_text[app.id]
             is_archived = app.id in self._archived_ids
             category_match = (
                 (category == "All applications" and not is_archived)
@@ -572,10 +578,10 @@ class MainWindow(QMainWindow):
         LogDialog(log_path, self).exec()
 
     def _app_by_id(self, app_id: str) -> ApplicationManifest:
-        for app in self.apps:
-            if app.id == app_id:
-                return app
-        raise KeyError(app_id)
+        try:
+            return self._apps_by_id[app_id]
+        except KeyError:
+            raise KeyError(app_id) from None
 
     def _open_url(self, url: str) -> None:
         """Open a local app URL without loading the user's browser extensions."""
