@@ -339,12 +339,17 @@ flowchart TB
             PY["Bundled Python 3.11.9 runtime"]
             APPS["Streamlit app files"]
             CONFIG["Configuration and app metadata"]
+            REQUIREMENTS["requirements.txt / wheelhouse"]
         end
         UI["Unified Pipeline Launcher UI<br/>PySide6 desktop application"]
+        SINGLE["Single-instance guard<br/>QLocalServer / QLocalSocket"]
+        RUNTIME["Runtime validation<br/>encodings, PySide6, Streamlit"]
         DISC["Application discovery and validation"]
         ENV["Per-app Python environment<br/>existing packages or requirements"]
         PROC["Process Manager"]
         PORT["Dynamic local port allocator"]
+        HEALTH["Health checker<br/>loopback readiness and expected port"]
+        BROWSER_LAUNCHER["Secure browser launcher<br/>verified localhost URL"]
         APP1["Streamlit App A<br/>local Python process"]
         APP2["Streamlit App B<br/>local Python process"]
         APPN["Streamlit App N<br/>local Python process"]
@@ -359,18 +364,23 @@ flowchart TB
         START --> PY
         PY --> CODE
         CODE --> UI
+        START --> RUNTIME
+        UI --> SINGLE
         UI --> CONFIG
         CONFIG --> DISC
         DISC --> ENV
         ENV --> PROC
         PROC --> PORT
+        PROC --> HEALTH
+        HEALTH --> BROWSER_LAUNCHER
         PROC --> APP1
         PROC --> APP2
         PROC --> APPN
         APP1 --> LOCAL1
         APP2 --> LOCAL2
         APPN --> LOCALN
-        UI --> BROWSER
+        UI --> BROWSER_LAUNCHER
+        BROWSER_LAUNCHER --> BROWSER
         BROWSER --> LOCAL1
         BROWSER --> LOCAL2
         BROWSER --> LOCALN
@@ -386,6 +396,7 @@ flowchart TB
         APPS --> APP1
         APPS --> APP2
         APPS --> APPN
+        REQUIREMENTS --> ENV
     end
     LAN["Other computers<br/>same Wi-Fi/LAN<br/><b>BLOCKED</b>"]
     INTERNET["Internet / external services<br/><b>NOT REQUIRED</b>"]
@@ -398,8 +409,8 @@ flowchart TB
     classDef process fill:#132b36,stroke:#079bd3,color:#fff,stroke-width:2px;
     classDef storage fill:#22282d,stroke:#74829b,color:#fff,stroke-width:2px;
     classDef external fill:#3a2020,stroke:#e05252,color:#fff,stroke-width:2px;
-    class USER,UI,DISC,ENV,PROC,PORT,APP1,APP2,APPN,LOCAL1,LOCAL2,LOCALN,BROWSER,STATUS process;
-    class START,CODE,PY,APPS,CONFIG,DATA,LOGS storage;
+    class USER,UI,SINGLE,RUNTIME,DISC,ENV,PROC,PORT,HEALTH,BROWSER_LAUNCHER,APP1,APP2,APPN,LOCAL1,LOCAL2,LOCALN,BROWSER,STATUS process;
+    class START,CODE,PY,APPS,CONFIG,REQUIREMENTS,DATA,LOGS storage;
     class LAN,INTERNET,CLOUD external;
 ```
 
