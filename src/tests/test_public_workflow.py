@@ -17,7 +17,7 @@ def test_public_quality_gate_checks_dependency_workflow(source_root):
     assert "compileall" in script
     assert "requirements-launcher.txt" in script
     assert "prepare_shared_runtime.ps1" in script
-    assert "create_launcher_shortcut.ps1" in script
+    assert "BUILD_LAUNCHER_EXE.ps1" in script
 
 
 def test_ci_runs_supported_windows_python_versions(source_root):
@@ -35,7 +35,7 @@ def test_public_readme_explains_no_rebuild_update(repo_root):
 
     assert "git pull --ff-only origin main" in readme
     assert "update_dependencies.ps1" in readme
-    assert "START_LAUNCHER.lnk" in readme
+    assert "Unified-Pipeline-Launcher.exe" in readme
 
 
 def test_only_root_readme_is_tracked_markdown(repo_root):

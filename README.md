@@ -33,7 +33,7 @@ launcher requirements plus each non-template app's `requirements.txt`:
 ```
 
 Windows users should double-click `INSTALL.bat`; it prepares the supported
-portable runtime and then double-click `START_LAUNCHER.lnk` for daily use.
+portable runtime, builds `Unified-Pipeline-Launcher.exe`, and starts it.
 
 ## First-Time Installation
 
@@ -58,27 +58,21 @@ You can also open the cloned folder in File Explorer and double-click
 
 1. Downloads a portable Python runtime.
 2. Installs the launcher and enabled applications' packages.
-3. Builds a branded `launcher.exe` bundle.
-4. Creates `START_LAUNCHER.lnk` pointing to that executable.
-5. Starts the launcher.
+3. Builds `Unified-Pipeline-Launcher.exe` from the bundled runtime.
+4. Starts the launcher.
 
 `INSTALL.bat` remains available for repairs or repeat installation.
 
 ## Daily Use
 
-- Double-click `START_LAUNCHER.lnk` for normal use.
-- Use `START_LAUNCHER.vbs` for a silent no-console launch.
-- Use `START_LAUNCHER.bat` for a normal command-line launch.
-- Use `START_LAUNCHER_DEBUG.bat` to display runtime/startup errors.
+- Double-click `Unified-Pipeline-Launcher.exe` for normal use.
+- Use `Unified-Pipeline-Launcher-debug.bat` for diagnostics and repair.
 - Select **Open** for one app or **Open All** for all visible apps.
 - Closing the launcher stops apps that it started.
 
-`START_LAUNCHER.bat` is the canonical source-tree startup implementation. VBS
-delegates to it with `--silent`, and the debug BAT delegates with `--debug`. The
-shortcut prefers the branded `launcher.exe` so Task Manager and the taskbar show
-the launcher icon; it falls back to VBS when an executable bundle is unavailable.
-The wrappers wait for the launcher and preserve a failing exit status; VBS shows
-an actionable error if startup fails.
+`Unified-Pipeline-Launcher.exe` is the canonical Windows entry point. It starts
+the bundled `src\runtime\pythonw.exe` with the launcher module and resolves its
+configuration relative to the executable directory.
 
 Startup resolves paths from the installation folder, clears inherited Python
 configuration, and validates the bundled interpreter's own standard library.
@@ -140,17 +134,16 @@ Start the launcher again after both commands finish.
 ### Pull code updates without reinstalling Python
 
 When the domain PC already has a validated `src\runtime`, pull source changes
-and run source mode. This bypasses any older `launcher.exe` and does not
+and run the diagnostic repair flow. This does not
 download Python or reinstall packages:
 
 ```powershell
 git pull --ff-only origin development/codex-launcher-v2
-& .\START_LAUNCHER.bat --source
+& .\Unified-Pipeline-Launcher-debug.bat
 ```
 
-Use `START_LAUNCHER_DEBUG.bat` only when you need visible diagnostics. Run
-`INSTALL.bat` again only when the runtime validation fails or dependencies
-actually change.
+Use `Unified-Pipeline-Launcher-debug.bat` when the runtime or executable needs
+repair. Run `INSTALL.bat` again for a complete installation.
 
 The equivalent maintenance entry point for a shell is:
 
@@ -247,9 +240,8 @@ letter instead of repeatedly rendering invalid SVG path data.
 Unified-Pipeline-Launcher/
 |-- apps/                       App registry and Streamlit apps
 |-- INSTALL.bat                 First-time installer and repair entry point
-|-- START_LAUNCHER.vbs          Normal no-console launcher
-|-- START_LAUNCHER.bat          Normal command-line launcher
-|-- START_LAUNCHER_DEBUG.bat    Troubleshooting launcher
+|-- Unified-Pipeline-Launcher.exe  Normal Windows launcher
+|-- Unified-Pipeline-Launcher-debug.bat  Repair and diagnostics
 |-- UPDATE_PACKAGES.bat         Python environment updater
 |-- README.md
 `-- src/
@@ -270,7 +262,7 @@ Streamlit processes, and browser run on the user's Windows computer:
 
 ```text
 User
-  -> START_LAUNCHER on the mounted network drive
+  -> Unified-Pipeline-Launcher.exe on the mounted network drive
   -> bundled Python 3.11.9 and launcher code on that drive
   -> Unified Pipeline Launcher UI on Windows
   -> Streamlit apps as local Python processes
@@ -278,7 +270,7 @@ User
   -> browser on the same Windows computer
 ```
 
-The network drive contains `START_LAUNCHER`, the bundled runtime, launcher
+The network drive contains `Unified-Pipeline-Launcher.exe`, the bundled runtime, launcher
 source, and Streamlit app files. Execution stays on Windows: app servers bind
 only to `127.0.0.1`, so other computers on the same Wi-Fi cannot open them.
 The browser displays all Streamlit frontends locally. The launcher does not
@@ -302,7 +294,7 @@ flowchart TB
     subgraph WIN["User's Windows machine"]
         direction TB
         subgraph DRIVE["Mounted network drive"]
-            START["START_LAUNCHER<br/>.bat / .vbs / .lnk"]
+            START["Unified-Pipeline-Launcher.exe"]
             APPFILES["Streamlit app files"]
             CODE["Unified Pipeline Launcher code"]
             PY["Bundled Python 3.11.9 runtime"]
@@ -335,7 +327,7 @@ flowchart TB
     subgraph WIN["User's Windows machine"]
         direction TB
         subgraph DRIVE["Mounted network drive"]
-            START["START_LAUNCHER<br/>.bat / .vbs / .lnk"]
+            START["Unified-Pipeline-Launcher.exe"]
             CODE["Unified Pipeline Launcher code"]
             PY["Bundled Python 3.11.9 runtime"]
             APPS["Streamlit app files"]

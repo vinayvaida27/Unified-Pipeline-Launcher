@@ -45,35 +45,23 @@ Invoke-GateStep "compile Python sources" {
 }
 
 Invoke-GateStep "public metadata" {
-    foreach ($Path in @("pyproject.toml", "uv.lock", "requirements-launcher.txt", "scripts\ensure_uv.ps1", "scripts\create_launcher_shortcut.ps1")) {
+    foreach ($Path in @("pyproject.toml", "uv.lock", "requirements-launcher.txt", "scripts\ensure_uv.ps1", "scripts\BUILD_LAUNCHER_EXE.ps1")) {
         if (-not (Test-Path -LiteralPath (Join-Path $Root $Path))) { throw "Missing public metadata file: $Path" }
     }
-    foreach ($Path in @("README.md", "src\LICENSE", "UPDATE_PACKAGES.bat", "START_LAUNCHER.bat", "START_LAUNCHER.vbs", "START_LAUNCHER_DEBUG.bat", "apps\apps.json")) {
+    foreach ($Path in @("README.md", "src\LICENSE", "UPDATE_PACKAGES.bat", "INSTALL.bat", "Unified-Pipeline-Launcher-debug.bat", "apps\apps.json")) {
         if (-not (Test-Path -LiteralPath (Join-Path $PublicRoot $Path))) { throw "Missing public root file: $Path" }
     }
 }
 
 Invoke-GateStep "startup entrypoints" {
-    $NormalBat = Get-Content -LiteralPath (Join-Path $PublicRoot "START_LAUNCHER.bat") -Raw
-    $DebugBat = Get-Content -LiteralPath (Join-Path $PublicRoot "START_LAUNCHER_DEBUG.bat") -Raw
-    $Vbs = Get-Content -LiteralPath (Join-Path $PublicRoot "START_LAUNCHER.vbs") -Raw
-    $ShortcutScript = Get-Content -LiteralPath (Join-Path $Root "scripts\create_launcher_shortcut.ps1") -Raw
-
-    foreach ($Text in @($NormalBat)) {
-        if ($Text -notmatch "-m\s+launcher") { throw "Batch launcher entrypoints must start the launcher package with -m launcher." }
-        if ($Text -match "-I\s+-m\s+launcher") { throw "Launcher module startup must not use -I because launcher lives in the source directory." }
-        if ($Text -match "--no-local-cache") { throw "Batch launcher entrypoints must not pass the removed --no-local-cache argument." }
-        if ($Text -notmatch "import launcher") { throw "Batch launcher entrypoints must validate that the source package is importable." }
-    }
-
-    if ($NormalBat -notmatch "--silent") { throw "START_LAUNCHER.bat must support silent wrapper execution." }
-    if ($NormalBat -notmatch '/wait') { throw "Canonical startup must propagate the launcher process exit status." }
-    if ($DebugBat -notmatch 'START_LAUNCHER\.bat.*--debug') { throw "Debug startup must delegate to the canonical batch." }
-    if ($Vbs -notmatch "START_LAUNCHER\.bat") { throw "START_LAUNCHER.vbs must delegate to START_LAUNCHER.bat so startup logic has one source of truth." }
-    if ($Vbs -notmatch "--silent") { throw "START_LAUNCHER.vbs must invoke the batch launcher in silent mode." }
-    if ($ShortcutScript -notmatch "START_LAUNCHER\.vbs") { throw "The generated shortcut must retain the VBS fallback." }
-    if ($ShortcutScript -notmatch "launcher\.exe") { throw "The generated shortcut must prefer a branded launcher.exe when one is available." }
-    if ($NormalBat -notmatch "import encodings") { throw "Canonical startup must validate the bundled runtime." }
+    $Install = Get-Content -LiteralPath (Join-Path $PublicRoot "INSTALL.bat") -Raw
+    $Debug = Get-Content -LiteralPath (Join-Path $PublicRoot "Unified-Pipeline-Launcher-debug.bat") -Raw
+    $Build = Get-Content -LiteralPath (Join-Path $Root "scripts\BUILD_LAUNCHER_EXE.ps1") -Raw
+    if ($Install -notmatch "BUILD_LAUNCHER_EXE\.ps1") { throw "INSTALL.bat must build the branded executable." }
+    if ($Install -notmatch "Unified-Pipeline-Launcher\.exe") { throw "INSTALL.bat must launch the branded executable." }
+    if ($Debug -notmatch "BUILD_LAUNCHER_EXE\.ps1") { throw "Repair diagnostics must rebuild the branded executable." }
+    if ($Build -notmatch "pythonw\.exe") { throw "The branded executable must use the bundled pythonw.exe." }
+    if ($Build -notmatch "Unified-Pipeline-Launcher\.exe") { throw "The build script must produce the branded executable." }
 }
 
 Invoke-GateStep "application SVG icons" {
@@ -111,7 +99,7 @@ Invoke-GateStep "PowerShell parser and compatibility" {
 }
 
 if ($FullBuild) {
-    Invoke-GateStep "release build" { & (Join-Path $PSScriptRoot "build_exe.ps1") }
+    Invoke-GateStep "branded executable build" { & (Join-Path $PSScriptRoot "BUILD_LAUNCHER_EXE.ps1") }
     Invoke-GateStep "release verification" { & (Join-Path $PSScriptRoot "verify_release.ps1") -Path (Join-Path $Root "build\Unified-Pipeline-Launcher") }
 }
 

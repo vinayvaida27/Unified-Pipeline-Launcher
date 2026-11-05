@@ -4,9 +4,7 @@ title Install Unified Pipeline Launcher
 
 for %%I in ("%~dp0.") do set "ROOT=%%~fI"
 set "DEPLOY=%ROOT%\src\scripts\deploy_network.ps1"
-set "BUILD=%ROOT%\src\scripts\build_exe.ps1"
-set "SHORTCUT_SCRIPT=%ROOT%\src\scripts\create_launcher_shortcut.ps1"
-set "SHORTCUT=%ROOT%\START_LAUNCHER.lnk"
+set "BUILD=%ROOT%\src\scripts\BUILD_LAUNCHER_EXE.ps1"
 
 if not exist "%DEPLOY%" (
     echo ERROR: Installer support file was not found:
@@ -49,17 +47,6 @@ if not "%EXITCODE%"=="0" (
 )
 
 echo.
-echo Updating the launcher shortcut...
-powershell.exe -NoProfile -ExecutionPolicy Bypass -File "%SHORTCUT_SCRIPT%" -ReleaseDir "%ROOT%"
-set "EXITCODE=%ERRORLEVEL%"
-if not "%EXITCODE%"=="0" (
-    echo.
-    echo Shortcut creation failed with exit code %EXITCODE%.
-    pause
-    exit /b %EXITCODE%
-)
-
-echo.
 echo Installation completed successfully.
-if exist "%SHORTCUT%" start "" "%SHORTCUT%"
+if exist "%ROOT%\Unified-Pipeline-Launcher.exe" start "" "%ROOT%\Unified-Pipeline-Launcher.exe"
 exit /b 0
