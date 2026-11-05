@@ -6,7 +6,6 @@
     "type": "streamlit",
     "entrypoint": "app.py",
     "icon": "assets/icon.svg",
-    "requirements": "requirements.txt",
     "enabled": true,
     "archived": false,
     "launch": {

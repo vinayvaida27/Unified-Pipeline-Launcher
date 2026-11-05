@@ -4,7 +4,6 @@
     "type": "streamlit",
     "entrypoint": "app.py",
     "icon": "assets/icon.svg",
-    "requirements": "requirements.txt",
     "wheelhouse": "wheelhouse",
     "python_version": "3.11",
     "enabled": true,
