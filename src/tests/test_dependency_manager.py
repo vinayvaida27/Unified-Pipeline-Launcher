@@ -35,10 +35,15 @@ def test_updates_only_missing_packages(monkeypatch, copied_apps, tmp_path):
             class Result:
                 stdout = "pandas\n"
             return Result()
-        return None
+        class Result:
+            returncode = 0
+            stdout = ""
+            stderr = ""
+        return Result()
 
     monkeypatch.setattr("launcher.dependency_manager.subprocess.run", run)
     result = update_runtime_dependencies(copied_apps, runtime, tmp_path / "state")
     assert "pandas" in result["missing"]
+    assert result["installed"] == ["pandas"]
     assert calls[-1][-1] == "pandas"
     assert json.loads((tmp_path / "state" / "installed-packages.json").read_text(encoding="utf-8"))["packages"] == result["packages"]

@@ -31,6 +31,16 @@ def scan_python_dependencies(apps_directory: Path) -> list[str]:
             if not any(part in {".venv", "venv", "__pycache__", ".pytest_cache"} for part in path.parts)
         ]
         local_modules.update(path.stem for path in python_files)
+        local_modules.update(path.parent.name for path in python_files if path.name == "__init__.py")
+        if len(python_files) == 1 and python_files[0] == app.entrypoint:
+            try:
+                local_modules.update(path.stem for path in app.entrypoint.parent.glob("*.py"))
+                local_modules.update(
+                    path.name for path in app.entrypoint.parent.iterdir()
+                    if path.is_dir() and (path / "__init__.py").is_file()
+                )
+            except OSError:
+                pass
         for path in python_files:
             try:
                 tree = ast.parse(path.read_text(encoding="utf-8"), filename=str(path))
@@ -84,15 +94,29 @@ def update_runtime_dependencies(
     missing = _missing_packages(runtime_python, packages)
     if progress:
         progress(f"Found {len(packages)} packages; {len(missing)} need installation")
-    if missing:
-        subprocess.run(
-            [str(runtime_python), "-I", "-m", "pip", "install", "--disable-pip-version-check", *missing],
-            check=True,
+    installed: list[str] = []
+    failed: list[str] = []
+    failures: list[str] = []
+    for package in missing:
+        result = subprocess.run(
+            [str(runtime_python), "-I", "-m", "pip", "install", "--disable-pip-version-check", package],
+            capture_output=True,
+            text=True,
+            check=False,
             timeout=1800,
         )
-    installed = [package for package in packages if package not in missing]
+        if result is None or result.returncode == 0:
+            installed.append(package)
+        else:
+            failed.append(package)
+            detail = (result.stderr or result.stdout or "pip returned a failure").strip().splitlines()[-1]
+            failures.append(f"{package}: {detail}")
+        if progress:
+            progress(f"Packages: {len(installed)} installed, {len(failed)} failed")
+    (state_directory / "package-update-errors.log").write_text("\n".join(failures) + ("\n" if failures else ""), encoding="utf-8")
+    skipped = [package for package in packages if package not in missing]
     atomic_write_json(
         state_directory / "installed-packages.json",
-        {"updated_at": datetime.now(timezone.utc).isoformat(), "packages": packages, "installed": installed + missing},
+        {"updated_at": datetime.now(timezone.utc).isoformat(), "packages": packages, "installed": skipped + installed, "failed": failed},
     )
-    return {"packages": packages, "missing": missing, "skipped": installed}
+    return {"packages": packages, "missing": missing, "installed": installed, "skipped": skipped, "failed": failed, "errors": failures}

@@ -88,8 +88,8 @@ class SettingsDialog(QDialog):
     def _packages_updated(self, result: dict) -> None:
         self.update_button.setEnabled(True)
         self.package_status.setText(
-            f"Package update complete: {len(result['missing'])} installed, "
-            f"{len(result['skipped'])} already available."
+            f"Package update complete: {len(result['installed'])} installed, "
+            f"{len(result['skipped'])} already available, {len(result['failed'])} failed."
         )
 
     def _packages_failed(self, message: str) -> None:
