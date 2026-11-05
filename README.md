@@ -297,6 +297,70 @@ graph is absent.
 
 ![Detailed developer architecture](docs/architecture-detailed.svg)
 
+The detailed runtime flow is also available as an expandable GitHub diagram:
+
+```mermaid
+flowchart TB
+    USER["User"]
+    subgraph WIN["User's Windows machine"]
+        direction TB
+        subgraph DRIVE["Mounted network drive"]
+            START["START_LAUNCHER<br/>.bat / .vbs / .lnk"]
+            CODE["Unified Pipeline Launcher code"]
+            PY["Bundled Python 3.11.9 runtime"]
+            APPS["Streamlit app files"]
+            CONFIG["Configuration and app metadata"]
+        end
+        UI["Unified Pipeline Launcher UI<br/>PySide6 desktop application"]
+        DISC["Application discovery and validation"]
+        ENV["Per-app Python environment"]
+        PROC["Process Manager"]
+        PORT["Dynamic local port allocator"]
+        APP1["Streamlit App A<br/>local Python process"]
+        APP2["Streamlit App B<br/>local Python process"]
+        APPN["Streamlit App N<br/>local Python process"]
+        LOCAL1["127.0.0.1:8501"]
+        LOCAL2["127.0.0.1:8502"]
+        LOCALN["127.0.0.1:&lt;dynamic-port&gt;"]
+        BROWSER["Isolated browser sessions<br/>temporary profiles, no extensions"]
+        DATA["Local input/output data"]
+        LOGS["Local logs and runtime cache"]
+        STATUS["Application status"]
+        USER --> START
+        START --> PY --> CODE --> UI
+        UI --> CONFIG --> DISC --> ENV --> PROC --> PORT
+        PROC --> APP1
+        PROC --> APP2
+        PROC --> APPN
+        APP1 --> LOCAL1
+        APP2 --> LOCAL2
+        APPN --> LOCALN
+        UI --> BROWSER
+        BROWSER --> LOCAL1
+        BROWSER --> LOCAL2
+        BROWSER --> LOCALN
+        APP1 --> DATA
+        APP2 --> DATA
+        APPN --> DATA
+        APP1 --> LOGS
+        APP2 --> LOGS
+        APPN --> LOGS
+        PROC --> STATUS --> UI
+        APPS --> DISC
+        APPS --> APP1
+        APPS --> APP2
+        APPS --> APPN
+    end
+    LAN["Other computers<br/>same Wi-Fi/LAN<br/><b>BLOCKED</b>"]
+    INTERNET["Internet / external services<br/><b>NOT REQUIRED</b>"]
+    CLOUD["Cloud APIs / remote databases<br/><b>NOT USED BY LAUNCHER</b>"]
+    LAN -. "Cannot access localhost ports" .-> LOCAL1
+    LAN -. "Cannot access localhost ports" .-> LOCAL2
+    LAN -. "Cannot access localhost ports" .-> LOCALN
+    INTERNET -. "No launcher connection" .-> WIN
+    CLOUD -. "No launcher connection" .-> WIN
+```
+
 ## Development
 
 To convert an existing Python script into a launcher-managed Streamlit app, use
