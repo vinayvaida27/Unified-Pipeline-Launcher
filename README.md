@@ -7,6 +7,8 @@
 Unified Pipeline Launcher is a Windows desktop application for starting,
 viewing, restarting, and stopping local Streamlit applications from one screen.
 
+Public repository: [Unified-Streamlit-Launcher](https://github.com/vinayvaida27/Unified-Streamlit-Launcher)
+
 > **Open source:** released under the [MIT License](src/LICENSE). Contributions are
 > welcome; see [CONTRIBUTING.md](CONTRIBUTING.md),
 > [CODE_OF_CONDUCT.md](CODE_OF_CONDUCT.md), and [SECURITY.md](SECURITY.md).
@@ -67,6 +69,9 @@ You can also open the cloned folder in File Explorer and double-click
 
 - Double-click `Unified-Pipeline-Launcher.exe` for normal use.
 - Use `Unified-Pipeline-Launcher-debug.bat` for diagnostics and repair.
+- Use `diagnose_launcher.bat` for console diagnostics and executable repair.
+- Open **Settings** and choose **Scan and update Python packages** to inspect,
+  install, retry, or diagnose application dependencies.
 - Select **Open** for one app or **Open All** for all visible apps.
 - Closing the launcher stops apps that it started.
 
@@ -258,6 +263,7 @@ Unified-Pipeline-Launcher/
 |-- install.bat                 First-time installer and repair entry point
 |-- Unified-Pipeline-Launcher.exe  Normal Windows launcher
 |-- Unified-Pipeline-Launcher-debug.bat  Repair and diagnostics
+|-- diagnose_launcher.bat        Console diagnostics and repair
 |-- update_package.bat          Python environment updater
 |-- README.md
 `-- src/
