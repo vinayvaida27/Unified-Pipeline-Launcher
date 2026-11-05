@@ -64,4 +64,4 @@ def test_release_build_copies_launcher_requirements(source_root):
 
     assert "requirements-launcher.txt" in build_script
     assert "requirements-launcher.txt" in verify_script
-    assert "launcher.exe" in build_script
+    assert "Unified-Pipeline-Launcher.exe" in build_script

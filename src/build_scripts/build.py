@@ -49,7 +49,7 @@ class ExeBuilder:
         return spec_path
 
     def run_pyinstaller(self, spec_path: Path) -> None:
-        print("Step 4: Building launcher.exe")
+        print("Step 4: Building Unified-Pipeline-Launcher.exe")
         env = {key: value for key, value in os.environ.items() if not key.upper().startswith("PYTHON")}
         if os.name == "nt":
             windows = Path(os.environ["SystemRoot"]).resolve()
@@ -104,7 +104,7 @@ class ExeBuilder:
             src = self.project_root / name if name in {"requirements-launcher.txt", "LICENSE"} else self.public_root / name
             if src.exists():
                 shutil.copy2(src, self.release_dir / name)
-        for name in ("START_LAUNCHER.bat", "START_LAUNCHER.vbs", "START_LAUNCHER_DEBUG.bat"):
+        for name in ("install.bat", "update_package.bat", "Unified-Pipeline-Launcher-debug.bat", "diagnose_launcher.bat"):
             src = self.public_root / name
             if src.exists():
                 shutil.copy2(src, self.release_dir / name)
@@ -143,10 +143,11 @@ class ExeBuilder:
     def verify_release(self) -> None:
         print("Step 7: Verifying release structure")
         required = [
-            "launcher.exe",
-            "START_LAUNCHER.bat",
-            "START_LAUNCHER.vbs",
-            "START_LAUNCHER_DEBUG.bat",
+            "Unified-Pipeline-Launcher.exe",
+            "install.bat",
+            "update_package.bat",
+            "Unified-Pipeline-Launcher-debug.bat",
+            "diagnose_launcher.bat",
             "requirements-launcher.txt",
             "config/launcher_config.json",
             "config/platform_manifest.json",
@@ -173,8 +174,8 @@ class ExeBuilder:
         self.verify_release()
         print("=" * 72)
         print(f"Build complete: {self.release_dir}")
-        print("Users can run: launcher.exe or START_LAUNCHER.vbs")
-        print("Debug console: START_LAUNCHER_DEBUG.bat")
+        print("Users can run: Unified-Pipeline-Launcher.exe")
+        print("Debug console: Unified-Pipeline-Launcher-debug.bat or diagnose_launcher.bat")
         print("Network drive: run scripts/deploy_network.ps1 once after deploy")
         print("=" * 72)
         return self.release_dir

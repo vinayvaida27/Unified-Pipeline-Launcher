@@ -32,7 +32,7 @@ launcher requirements plus each non-template app's `requirements.txt`:
 ./src/install.sh
 ```
 
-Windows users should double-click `INSTALL.bat`; it prepares the supported
+Windows users should double-click `install.bat`; it prepares the supported
 portable runtime, builds `Unified-Pipeline-Launcher.exe`, and starts it.
 
 ## First-Time Installation
@@ -42,7 +42,7 @@ Clone the repository and run the installer:
 ```powershell
 gh repo clone vinayvaida27/Unified-Pipeline-Launcher
 Set-Location ".\Unified-Pipeline-Launcher"
-.\INSTALL.bat
+.\install.bat
 ```
 
 Git can be used instead of GitHub CLI:
@@ -50,18 +50,18 @@ Git can be used instead of GitHub CLI:
 ```powershell
 git clone https://github.com/vinayvaida27/Unified-Pipeline-Launcher.git
 Set-Location ".\Unified-Pipeline-Launcher"
-.\INSTALL.bat
+.\install.bat
 ```
 
 You can also open the cloned folder in File Explorer and double-click
-`INSTALL.bat`. The installer:
+`install.bat`. The installer:
 
 1. Downloads a portable Python runtime.
 2. Installs the launcher and enabled applications' packages.
 3. Builds `Unified-Pipeline-Launcher.exe` from the bundled runtime.
 4. Starts the launcher.
 
-`INSTALL.bat` remains available for repairs or repeat installation.
+`install.bat` remains available for repairs or repeat installation.
 
 ## Daily Use
 
@@ -105,11 +105,11 @@ For the original release line, the equivalent command is `git pull --ff-only ori
 
 ```powershell
 git pull --ff-only
-.\UPDATE_PACKAGES.bat
+.\update_package.bat
 ```
 
 `git pull` updates the currently checked-out branch without hard-coding `main`.
-`UPDATE_PACKAGES.bat` bootstraps the project's pinned `uv` tool when needed,
+`update_package.bat` bootstraps the project's pinned `uv` tool when needed,
 updates the portable runtime and recognized virtual environments, rebuilds the
 branded launcher, refreshes its shortcut, and reports failed checks. Maintenance
 installation requests `--link-mode=copy` so the local uv cache also works with
@@ -143,7 +143,7 @@ git pull --ff-only origin development/codex-launcher-v2
 ```
 
 Use `Unified-Pipeline-Launcher-debug.bat` when the runtime or executable needs
-repair. Run `INSTALL.bat` again for a complete installation.
+repair. Run `install.bat` again for a complete installation.
 
 The equivalent maintenance entry point for a shell is:
 
@@ -248,10 +248,10 @@ letter instead of repeatedly rendering invalid SVG path data.
 ```text
 Unified-Pipeline-Launcher/
 |-- apps/                       App registry and Streamlit apps
-|-- INSTALL.bat                 First-time installer and repair entry point
+|-- install.bat                 First-time installer and repair entry point
 |-- Unified-Pipeline-Launcher.exe  Normal Windows launcher
 |-- Unified-Pipeline-Launcher-debug.bat  Repair and diagnostics
-|-- UPDATE_PACKAGES.bat         Python environment updater
+|-- update_package.bat          Python environment updater
 |-- README.md
 `-- src/
     |-- config/                 Launcher configuration

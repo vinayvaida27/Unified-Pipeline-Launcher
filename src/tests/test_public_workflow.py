@@ -38,7 +38,7 @@ def test_public_readme_explains_no_rebuild_update(repo_root):
     assert "Unified-Pipeline-Launcher.exe" in readme
 
 
-def test_only_root_readme_is_tracked_markdown(repo_root):
+def test_release_readme_and_performance_report_are_tracked(repo_root):
     import subprocess
 
     result = subprocess.run(
@@ -49,4 +49,8 @@ def test_only_root_readme_is_tracked_markdown(repo_root):
         text=True,
     )
 
-    assert result.stdout.splitlines() == ["README.md"]
+    assert result.stdout.splitlines() == [
+        "README.md",
+        "src/.agents/skills/launcher-performance-engineer/SKILL.md",
+        "src/docs/performance/optimization-report.md",
+    ]

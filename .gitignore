@@ -29,3 +29,10 @@ src/.autoresearch/
 
 # Machine-specific shortcut
 START_LAUNCHER.lnk
+
+# Local build and benchmark output
+src/_workspace/
+src/build/
+src/*.coverage
+src/*-launcher.egg-info/
+src/*_launcher.egg-info/

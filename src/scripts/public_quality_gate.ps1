@@ -48,13 +48,13 @@ Invoke-GateStep "public metadata" {
     foreach ($Path in @("pyproject.toml", "uv.lock", "requirements-launcher.txt", "scripts\ensure_uv.ps1", "scripts\BUILD_LAUNCHER_EXE.ps1")) {
         if (-not (Test-Path -LiteralPath (Join-Path $Root $Path))) { throw "Missing public metadata file: $Path" }
     }
-    foreach ($Path in @("README.md", "src\LICENSE", "UPDATE_PACKAGES.bat", "INSTALL.bat", "Unified-Pipeline-Launcher-debug.bat", "apps\apps.json")) {
+    foreach ($Path in @("README.md", "src\LICENSE", "update_package.bat", "install.bat", "Unified-Pipeline-Launcher-debug.bat", "diagnose_launcher.bat", "apps\apps.json")) {
         if (-not (Test-Path -LiteralPath (Join-Path $PublicRoot $Path))) { throw "Missing public root file: $Path" }
     }
 }
 
 Invoke-GateStep "startup entrypoints" {
-    $Install = Get-Content -LiteralPath (Join-Path $PublicRoot "INSTALL.bat") -Raw
+    $Install = Get-Content -LiteralPath (Join-Path $PublicRoot "install.bat") -Raw
     $Debug = Get-Content -LiteralPath (Join-Path $PublicRoot "Unified-Pipeline-Launcher-debug.bat") -Raw
     $Build = Get-Content -LiteralPath (Join-Path $Root "scripts\BUILD_LAUNCHER_EXE.ps1") -Raw
     if ($Install -notmatch "BUILD_LAUNCHER_EXE\.ps1") { throw "INSTALL.bat must build the branded executable." }

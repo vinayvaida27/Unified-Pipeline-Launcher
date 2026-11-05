@@ -22,7 +22,7 @@ set "EXITCODE=%ERRORLEVEL%"
 if not "%EXITCODE%"=="0" (
     echo.
     echo Installation failed with exit code %EXITCODE%.
-    echo INSTALL.bat was kept so you can try again.
+    echo install.bat was kept so you can try again.
     pause
     exit /b %EXITCODE%
 )
@@ -41,7 +41,7 @@ set "EXITCODE=%ERRORLEVEL%"
 if not "%EXITCODE%"=="0" (
     echo.
     echo Launcher build failed with exit code %EXITCODE%.
-    echo INSTALL.bat was kept so you can try again.
+    echo install.bat was kept so you can try again.
     pause
     exit /b %EXITCODE%
 )
