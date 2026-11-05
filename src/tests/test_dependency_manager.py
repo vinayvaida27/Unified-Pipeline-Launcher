@@ -15,7 +15,16 @@ def test_scans_unique_third_party_imports(copied_apps, tmp_path):
     assert "streamlit" not in packages
 
 
+def test_skips_local_project_modules(copied_apps):
+    app_dir = copied_apps / "01_hello_pipeline"
+    (app_dir / "initialization_methods.py").write_text("def initialize(): pass\n", encoding="utf-8")
+    (app_dir / "extra.py").write_text("from initialization_methods import initialize\n", encoding="utf-8")
+
+    assert "initialization_methods" not in scan_python_dependencies(copied_apps)
+
+
 def test_updates_only_missing_packages(monkeypatch, copied_apps, tmp_path):
+    (copied_apps / "01_hello_pipeline" / "extra.py").write_text("import pandas\n", encoding="utf-8")
     runtime = tmp_path / "python.exe"
     runtime.write_text("", encoding="utf-8")
     calls = []

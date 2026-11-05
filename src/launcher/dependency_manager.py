@@ -20,11 +20,18 @@ def scan_python_dependencies(apps_directory: Path) -> list[str]:
     """Return unique third-party package names imported by registered apps."""
 
     modules: set[str] = set()
+    local_modules: set[str] = set()
     stdlib = getattr(sys, "stdlib_module_names", set())
     for app in discover_apps(apps_directory, include_disabled=True):
-        for path in app.app_dir.rglob("*.py"):
-            if any(part in {".venv", "venv", "__pycache__", ".pytest_cache"} for part in path.parts):
-                continue
+        # A direct file on a drive root must not turn a whole network/local
+        # drive into the scan scope; project folders still scan recursively.
+        candidates = [app.entrypoint] if app.app_dir == Path(app.app_dir.anchor or app.app_dir) else app.app_dir.rglob("*.py")
+        python_files = [
+            path for path in candidates
+            if not any(part in {".venv", "venv", "__pycache__", ".pytest_cache"} for part in path.parts)
+        ]
+        local_modules.update(path.stem for path in python_files)
+        for path in python_files:
             try:
                 tree = ast.parse(path.read_text(encoding="utf-8"), filename=str(path))
             except (OSError, UnicodeError, SyntaxError):
@@ -37,7 +44,7 @@ def scan_python_dependencies(apps_directory: Path) -> list[str]:
     packages = {
         PACKAGE_ALIASES.get(module, module)
         for module in modules
-        if module not in stdlib and module not in {"streamlit"}
+        if module not in stdlib and module not in {"streamlit"} and module not in local_modules
     }
     return sorted(packages, key=str.casefold)
 
