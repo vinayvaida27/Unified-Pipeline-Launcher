@@ -38,7 +38,8 @@ def test_rejects_duplicate_ids(copied_apps):
 def test_handles_missing_icon(copied_apps):
     (copied_apps / "01_hello_pipeline" / "assets" / "icon.svg").unlink()
     apps = discover_apps(copied_apps)
-    assert all(app.id != "hello-pipeline" for app in apps)
+    app = next(app for app in apps if app.id == "hello-pipeline")
+    assert app.icon.name == "launcher.png"
 
 
 def test_rejects_path_traversal(copied_apps):
@@ -78,3 +79,61 @@ def test_discovers_direct_python_path_without_optional_files(copied_apps, tmp_pa
     assert app.entrypoint == entrypoint.resolve()
     assert app.requirements is None
     assert app.icon.name == "launcher.png"
+
+
+def test_discovers_project_path_and_infers_requirements(copied_apps, tmp_path):
+    project = tmp_path / "external_project"
+    project.mkdir()
+    entrypoint = project / "app.py"
+    entrypoint.write_text("import pandas\nimport streamlit as st\nst.write('external')\n", encoding="utf-8")
+    data = _load_registry(copied_apps)
+    data["applications"].append(
+        {
+            "id": "external-project",
+            "project_path": str(project),
+            "name": "External Project",
+            "version": "1.0.0",
+            "description": "A project directory outside apps/.",
+            "category": "External",
+            "display_order": 12,
+        }
+    )
+    _write_registry(copied_apps, data)
+
+    app = next(app for app in discover_apps(copied_apps) if app.id == "external-project")
+    assert app.entrypoint == entrypoint.resolve()
+    assert app.icon.name == "launcher.png"
+    assert app.requirements == (project / ".launcher-requirements.txt").resolve()
+    assert app.requirements.read_text(encoding="utf-8") == "pandas\n"
+
+
+def test_explicit_requirement_and_icon_paths_are_used(copied_apps, tmp_path):
+    project = tmp_path / "explicit_project"
+    project.mkdir()
+    entrypoint = project / "main.py"
+    requirements = tmp_path / "requirements-custom.txt"
+    icon = tmp_path / "icon.svg"
+    entrypoint.write_text("import streamlit as st\n", encoding="utf-8")
+    requirements.write_text("streamlit\n", encoding="utf-8")
+    icon.write_text("<svg xmlns='http://www.w3.org/2000/svg' width='1' height='1' />", encoding="utf-8")
+    data = _load_registry(copied_apps)
+    data["applications"].append(
+        {
+            "id": "explicit-project",
+            "project_path": str(project),
+            "app_path": str(entrypoint),
+            "requirements_path": str(requirements),
+            "icon_path": str(icon),
+            "name": "Explicit Project",
+            "version": "1.0.0",
+            "description": "Explicit paths.",
+            "category": "External",
+            "display_order": 13,
+        }
+    )
+    _write_registry(copied_apps, data)
+
+    app = next(app for app in discover_apps(copied_apps) if app.id == "explicit-project")
+    assert app.entrypoint == entrypoint.resolve()
+    assert app.requirements == requirements.resolve()
+    assert app.icon == icon.resolve()

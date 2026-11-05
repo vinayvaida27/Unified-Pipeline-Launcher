@@ -28,7 +28,6 @@ from PySide6.QtWidgets import (
 )
 
 from ..environment_manager import EnvironmentManager
-from ..health_checker import HealthChecker
 from ..app_registry import set_app_archived
 from ..models import ApplicationManifest, ApplicationStatus, PlatformConfig
 from ..process_manager import ProcessManager
@@ -580,6 +579,8 @@ class MainWindow(QMainWindow):
 
         if not state or not state.url or not state.process or state.process.poll() is not None:
             return None
+        from ..health_checker import HealthChecker
+
         if HealthChecker._port_from_url(state.url) != state.port:
             return None
         token = self._launch_tokens.get(app_id)

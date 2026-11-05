@@ -33,12 +33,26 @@
     {
       "id": "external-app",
       "path": "D:/shared/pipelines/my_app.py", // direct file; no folder needed
+      "requirements_path": "D:/shared/pipelines/requirements.txt", // optional explicit dependency file
+      "icon_path": "D:/shared/pipelines/assets/icon.svg", // optional explicit icon
       "name": "External App",
       "version": "1.0.0",
       "description": "A Streamlit file stored outside apps/.",
       "category": "External",
       "display_order": 2
       // requirements and icon are optional for direct files
+    },
+    {
+      "id": "project-app",
+      "project_path": "D:/shared/pipelines/project-app", // folder containing app.py
+      "app_path": "app.py", // optional; defaults to project_path/app.py
+      "name": "Project App",
+      "version": "1.0.0",
+      "description": "A project directory with optional assets and requirements.",
+      "category": "External",
+      "display_order": 3
+      // requirements_path defaults to requirements.txt, then import scanning
+      // creates .launcher-requirements.txt when no file exists.
     }
   ]
 }

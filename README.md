@@ -200,13 +200,16 @@ JSON cannot contain comments, so the field-by-field commented example lives in
 [`apps/apps.template.jsonc`](apps/apps.template.jsonc). Copy its shape into
 `apps/apps.json` while keeping the file valid JSON.
 
-An app does not need a folder under `apps`. Use `path` for a direct Streamlit
-file path (absolute, or relative to `apps/` or the repository parent):
+An app does not need a folder under `apps`. Use `path` or `app_path` for a
+direct Streamlit file path, or `project_path` for a project folder. Paths may
+be absolute or relative to `apps/` or the repository parent:
 
 ```json
 {
   "id": "my-external-app",
   "path": "D:/shared/pipelines/my_app.py",
+  "requirements_path": "D:/shared/pipelines/requirements.txt",
+  "icon_path": "D:/shared/pipelines/assets/icon.svg",
   "name": "Shared Pipeline",
   "version": "1.0.0",
   "description": "A Streamlit file stored outside this repository.",
@@ -215,10 +218,16 @@ file path (absolute, or relative to `apps/` or the repository parent):
 }
 ```
 
-For direct files, `requirements` and `icon` are optional. If omitted or
-missing, the launcher uses the existing runtime packages and the Unified
-Pipeline Launcher icon. The file must still be a real `.py` file; the same
-loopback binding, process supervision, and isolated browser rules apply.
+For a project folder, `app_path` defaults to `project_path/app.py`. The
+launcher checks an explicit `requirements_path`/`requirements` first, then
+`requirements.txt` or `requirement.txt` in the project. An explicit
+`icon_path`/`icon` is handled the same way; otherwise it checks the project's
+assets and falls back to the Unified Pipeline Launcher icon. A missing
+requirements file creates `.launcher-requirements.txt` from unique third-party
+imports in the entrypoint (standard-library modules and Streamlit are skipped),
+so the existing per-app environment installer can install them. The entrypoint
+must still be a real `.py` file; loopback binding, process supervision, and
+isolated browser rules remain unchanged.
 
 Bump `version` whenever the app's dependencies or behavior changes. To add a
 dependency and refresh the runtime:

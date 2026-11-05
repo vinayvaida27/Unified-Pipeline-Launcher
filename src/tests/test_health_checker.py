@@ -94,3 +94,21 @@ def test_log_parser_ignores_urls_from_other_ports(tmp_path):
     )
 
     assert HealthChecker.streamlit_ready_url_from_log(log_path, expected_port=expected_port) is None
+
+
+def test_readiness_does_not_reread_unchanged_log(tmp_path, monkeypatch):
+    port = PortManager().get_available_port()
+    log_path = tmp_path / "app.log"
+    log_path.write_text("starting\n", encoding="utf-8")
+    reads = []
+    checks = [False, False, False, True]
+
+    monkeypatch.setattr(
+        HealthChecker,
+        "streamlit_ready_url_from_log",
+        staticmethod(lambda *args, **kwargs: reads.append(True) or None),
+    )
+    monkeypatch.setattr(HealthChecker, "_url_ok", staticmethod(lambda url: checks.pop(0)))
+
+    assert HealthChecker().wait_until_healthy(FakeProcess(), port, 1, log_path)
+    assert len(reads) == 1

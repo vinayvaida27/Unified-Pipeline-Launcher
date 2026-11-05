@@ -11,7 +11,6 @@ from datetime import datetime, timezone
 from pathlib import Path
 
 from .exceptions import ApplicationStartError, ApplicationStopError
-from .health_checker import HealthChecker
 from .models import ApplicationManifest, ApplicationRuntimeState, ApplicationStatus, EnvironmentState
 from .port_manager import PortManager
 
@@ -23,7 +22,7 @@ class ProcessManager:
         self.logs_dir = logs_dir
         self.logs_dir.mkdir(parents=True, exist_ok=True)
         self.port_manager = port_manager or PortManager()
-        self.health_checker = health_checker or HealthChecker()
+        self.health_checker = health_checker
         self._lock = threading.RLock()
         self._running: dict[str, ApplicationRuntimeState] = {}
 
@@ -100,6 +99,11 @@ class ProcessManager:
                 entrypoint_path=app.entrypoint,
             )
             self._running[app.id] = state
+        if self.health_checker is None:
+            # Keep urllib/SSL out of launcher startup; readiness is only needed after spawn.
+            from .health_checker import HealthChecker
+
+            self.health_checker = HealthChecker()
         try:
             url = self.health_checker.wait_until_healthy(process, port, app.launch.startup_timeout_seconds, log_path)
         except Exception:

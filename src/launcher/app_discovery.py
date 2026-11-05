@@ -3,7 +3,9 @@
 from __future__ import annotations
 
 import logging
+import ast
 import re
+import sys
 from pathlib import Path
 
 from .constants import DEFAULT_ADDRESS, SUPPORTED_APP_TYPES, SUPPORTED_SCHEMA_VERSION
@@ -49,22 +51,86 @@ def _resolve_direct_entrypoint(raw: str, apps_directory: Path) -> Path:
     return expand_path(raw, apps_directory)
 
 
+def _resolve_registry_path(raw: str, apps_directory: Path) -> Path:
+    """Resolve a registry path relative to apps/ or the repository root."""
+
+    path = Path(str(raw))
+    if path.is_absolute():
+        return expand_path(str(raw))
+    for base in (apps_directory, apps_directory.parent):
+        candidate = expand_path(str(raw), base)
+        if candidate.exists():
+            return candidate
+    return expand_path(str(raw), apps_directory)
+
+
+def _infer_requirements(entrypoint: Path) -> Path | None:
+    """Write a small deterministic requirements file from imports when needed."""
+
+    try:
+        tree = ast.parse(entrypoint.read_text(encoding="utf-8"), filename=str(entrypoint))
+    except (OSError, UnicodeError, SyntaxError):
+        return None
+    stdlib = getattr(sys, "stdlib_module_names", set())
+    aliases = {"PIL": "Pillow", "cv2": "opencv-python", "sklearn": "scikit-learn", "yaml": "PyYAML"}
+    modules: set[str] = set()
+    for node in ast.walk(tree):
+        if isinstance(node, ast.Import):
+            modules.update(alias.name.split(".", 1)[0] for alias in node.names)
+        elif isinstance(node, ast.ImportFrom) and node.level == 0 and node.module:
+            modules.add(node.module.split(".", 1)[0])
+    packages = sorted(
+        aliases.get(name, name)
+        for name in modules
+        if name not in stdlib
+        and name not in {"streamlit"}
+        and not (entrypoint.parent / f"{name}.py").exists()
+        and not (entrypoint.parent / name).is_dir()
+    )
+    if not packages:
+        return None
+    generated = entrypoint.parent / ".launcher-requirements.txt"
+    try:
+        content = "\n".join(packages) + "\n"
+        if not generated.exists() or generated.read_text(encoding="utf-8") != content:
+            generated.write_text(content, encoding="utf-8")
+    except OSError:
+        return None
+    return generated
+
+
 def _manifest_from_registry_entry(apps_directory: Path, defaults: dict, app_data: dict) -> ApplicationManifest:
     """Build and validate an application manifest from apps/apps.json."""
 
     reject_command_injection_fields(app_data)
     data = _merge_defaults(defaults, app_data)
+    project_raw = app_data.get("project_path") or app_data.get("project")
     direct_raw = app_data.get("path") or app_data.get("app_path")
     direct_raw = direct_raw or (
         app_data.get("entrypoint")
         if Path(str(app_data.get("entrypoint", ""))).is_absolute()
         else None
     )
-    if direct_raw:
-        entrypoint = _resolve_direct_entrypoint(str(direct_raw), apps_directory)
-        app_dir = entrypoint.parent
+    if project_raw or direct_raw:
+        project = _resolve_registry_path(str(project_raw), apps_directory) if project_raw else None
+        direct_path = _resolve_registry_path(str(direct_raw), apps_directory) if direct_raw else None
+        if direct_path and direct_path.is_dir():
+            project = direct_path
+            direct_path = None
+        if project:
+            app_dir = project.resolve()
+            candidate = app_data.get("entrypoint") or app_data.get("app_path") or "app.py"
+            entrypoint = _resolve_registry_path(str(candidate), app_dir) if not Path(str(candidate)).is_absolute() else expand_path(str(candidate))
+            if not entrypoint.is_file() and not app_data.get("entrypoint") and not app_data.get("app_path"):
+                py_files = sorted(app_dir.glob("*.py"))
+                entrypoint = py_files[0] if len(py_files) == 1 else entrypoint
+        else:
+            entrypoint = direct_path or _resolve_direct_entrypoint(str(direct_raw), apps_directory)
+            app_dir = entrypoint.parent
         return _load_app_manifest_data(app_dir, data, direct_entrypoint=entrypoint)
-    folder_raw = str(_required(data, "folder"))
+    folder_raw = str(data.get("folder", data.get("project_path", "")))
+    if not folder_raw:
+        raise ManifestValidationError("Missing application project path: folder or project_path")
     reject_path_traversal(folder_raw)
     app_dir = ensure_within_directory(apps_directory / folder_raw, apps_directory)
     return _load_app_manifest_data(app_dir, data)
@@ -94,8 +160,8 @@ def _load_app_manifest_data(app_dir: Path, data: dict, direct_entrypoint: Path |
 
     direct = direct_entrypoint is not None
     entrypoint_raw = str(data.get("entrypoint", ""))
-    icon_raw = str(data.get("icon", ""))
-    requirements_raw = str(data.get("requirements", ""))
+    icon_raw = str(data.get("icon_path", data.get("icon", "")))
+    requirements_raw = str(data.get("requirements_path", data.get("requirements", "")))
     wheelhouse_raw = str(data.get("wheelhouse", "wheelhouse"))
     if direct:
         entrypoint = direct_entrypoint.resolve()
@@ -103,11 +169,15 @@ def _load_app_manifest_data(app_dir: Path, data: dict, direct_entrypoint: Path |
         requirements = expand_path(requirements_raw, app_dir) if requirements_raw else None
         wheelhouse = expand_path(wheelhouse_raw, app_dir)
     else:
-        for value in (entrypoint_raw, icon_raw, requirements_raw, wheelhouse_raw):
+        for value in (entrypoint_raw, wheelhouse_raw):
             reject_path_traversal(value)
-        entrypoint = ensure_within_directory(app_dir / _required(data, "entrypoint"), app_dir)
-        icon = ensure_within_directory(app_dir / _required(data, "icon"), app_dir)
-        requirements = ensure_within_directory(app_dir / _required(data, "requirements"), app_dir)
+        if icon_raw and not Path(icon_raw).is_absolute():
+            reject_path_traversal(icon_raw)
+        if requirements_raw and not Path(requirements_raw).is_absolute():
+            reject_path_traversal(requirements_raw)
+        entrypoint = ensure_within_directory(app_dir / (entrypoint_raw or "app.py"), app_dir)
+        icon = expand_path(icon_raw, app_dir) if Path(icon_raw).is_absolute() else (ensure_within_directory(app_dir / icon_raw, app_dir) if icon_raw else _default_icon_path())
+        requirements = expand_path(requirements_raw, app_dir) if Path(requirements_raw).is_absolute() else (ensure_within_directory(app_dir / requirements_raw, app_dir) if requirements_raw else None)
         wheelhouse = ensure_within_directory(app_dir / wheelhouse_raw, app_dir)
 
     if direct and entrypoint.suffix.lower() != ".py":
@@ -115,15 +185,19 @@ def _load_app_manifest_data(app_dir: Path, data: dict, direct_entrypoint: Path |
     if not entrypoint.is_file():
         raise ManifestValidationError(f"Entrypoint does not exist: {entrypoint}")
     if not icon.is_file():
-        if direct and _default_icon_path().is_file():
+        if _default_icon_path().is_file():
             icon = _default_icon_path()
         else:
             raise ManifestValidationError(f"Icon does not exist: {icon}")
     if requirements is not None and not requirements.is_file():
-        if direct:
-            requirements = None
-        else:
-            raise ManifestValidationError(f"Requirements file does not exist: {requirements}")
+        requirements = None
+    if requirements is None:
+        for candidate in (app_dir / "requirements.txt", app_dir / "requirement.txt"):
+            if candidate.is_file():
+                requirements = candidate.resolve()
+                break
+    if requirements is None:
+        requirements = _infer_requirements(entrypoint)
     display_order = int(_required(data, "display_order"))
     if display_order < 1:
         raise ManifestValidationError("display_order must be positive")

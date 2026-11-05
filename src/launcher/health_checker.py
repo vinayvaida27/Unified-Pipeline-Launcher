@@ -6,9 +6,7 @@ import re
 import time
 from pathlib import Path
 from subprocess import Popen
-from urllib.error import URLError
 from urllib.parse import urlparse
-from urllib.request import urlopen
 
 from .constants import HEALTH_PATH
 from .exceptions import ApplicationHealthCheckError
@@ -38,6 +36,8 @@ class HealthChecker:
         root_url = f"http://127.0.0.1:{port}"
         health_url = f"{root_url}{HEALTH_PATH}"
         deadline = time.time() + timeout_seconds
+        log_signature = None
+        log_url = None
 
         while time.time() < deadline:
             exit_code = process.poll()
@@ -50,10 +50,16 @@ class HealthChecker:
             # then return.  A URL with a different port is from a stale launch;
             # skip it and keep polling our health endpoint.
             if log_path:
-                log_url = self.streamlit_ready_url_from_log(log_path, expected_port=port)
-                if log_url:
-                    if self._url_ok(health_url) or self._url_ok(root_url):
-                        return root_url
+                try:
+                    stat = log_path.stat()
+                    signature = (stat.st_size, stat.st_mtime_ns)
+                except OSError:
+                    signature = None
+                if signature != log_signature:
+                    log_signature = signature
+                    log_url = self.streamlit_ready_url_from_log(log_path, expected_port=port)
+            if log_url and (self._url_ok(health_url) or self._url_ok(root_url)):
+                return root_url
 
             if self._url_ok(health_url) or self._url_ok(root_url):
                 return root_url
@@ -74,6 +80,10 @@ class HealthChecker:
 
     @staticmethod
     def _url_ok(url: str) -> bool:
+        # Keep urllib/SSL out of launcher startup; it is only needed when an app starts.
+        from urllib.error import URLError
+        from urllib.request import urlopen
+
         try:
             with urlopen(url, timeout=0.2) as response:
                 return 200 <= int(response.status) < 500
