@@ -62,7 +62,7 @@ Invoke-GateStep "startup entrypoints" {
     foreach ($Text in @($NormalBat)) {
         if ($Text -notmatch "-m\s+launcher") { throw "Batch launcher entrypoints must start the launcher package with -m launcher." }
         if ($Text -match "-I\s+-m\s+launcher") { throw "Launcher module startup must not use -I because launcher lives in the source directory." }
-        if ($Text -notmatch "--no-local-cache") { throw "Batch launcher entrypoints must explicitly bypass expensive startup caching." }
+        if ($Text -match "--no-local-cache") { throw "Batch launcher entrypoints must not pass the removed --no-local-cache argument." }
         if ($Text -notmatch "import launcher") { throw "Batch launcher entrypoints must validate that the source package is importable." }
     }
 

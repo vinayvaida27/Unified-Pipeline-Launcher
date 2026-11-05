@@ -88,8 +88,9 @@ would lose the source directory needed for package discovery.
 
 Normal portable network launches use the verified bundled runtime without
 copying the entire runtime or application tree before showing the window.
-The canonical entrypoints pass `--no-local-cache`. Explicit cache operations
-remain available through configuration/direct invocation. Existing local
+The canonical entrypoints pass only arguments supported by the Python launcher
+CLI. Explicit cache operations remain available through configuration/direct
+invocation. Existing local
 installed deployments keep their runtime local; a network source must never
 become that runtime's Python prefix. Maintenance does not automatically switch
 between these deployment modes.

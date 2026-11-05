@@ -29,11 +29,11 @@ if not exist "%EXE%" (
   if errorlevel 1 goto invalid_source
 )
 if exist "%EXE%" if "%SOURCE%"=="0" if "%DEBUG%"=="0" (
-  start "" /wait "%EXE%" --config "%CONFIG%" --no-local-cache
+  start "" /wait "%EXE%" --config "%CONFIG%"
 ) else if "%DEBUG%"=="1" (
-  "%PYTHON%" -E -s -m launcher --config "%CONFIG%" --no-local-cache
+  "%PYTHON%" -E -s -m launcher --config "%CONFIG%"
 ) else (
-  start "" /wait "%PYTHONW%" -E -s -m launcher --config "%CONFIG%" --no-local-cache
+  start "" /wait "%PYTHONW%" -E -s -m launcher --config "%CONFIG%"
 )
 set "EXITCODE=%ERRORLEVEL%"
 cd /d "%ROOT%" >nul 2>&1
