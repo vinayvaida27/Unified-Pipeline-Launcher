@@ -45,6 +45,9 @@ def test_builds_correct_command_list(repo_root, tmp_path):
     assert "127.0.0.1" in command
     assert "--server.port" in command
     assert "5555" in command
+    assert command[command.index("--server.enableCORS") + 1] == "false"
+    assert command[command.index("--server.enableXsrfProtection") + 1] == "true"
+    assert command[command.index("--server.address") + 1] == "127.0.0.1"
 
 
 def test_records_process_state(monkeypatch, repo_root, tmp_path):
