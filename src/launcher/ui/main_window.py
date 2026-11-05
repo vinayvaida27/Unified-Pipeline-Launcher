@@ -28,6 +28,7 @@ from PySide6.QtWidgets import (
 )
 
 from ..environment_manager import EnvironmentManager
+from ..app_discovery import discover_apps
 from ..app_registry import set_app_archived
 from ..models import ApplicationManifest, ApplicationStatus, PlatformConfig
 from ..process_manager import ProcessManager
@@ -137,7 +138,7 @@ class MainWindow(QMainWindow):
         self.applications_nav.setToolTip("View applications")
         self.settings_nav.setToolTip("View launcher settings")
         self.about_nav.setToolTip("About this launcher")
-        self.settings_nav.clicked.connect(lambda: SettingsDialog(self.config, self).exec())
+        self.settings_nav.clicked.connect(self._show_settings)
         self.about_nav.clicked.connect(lambda: show_about(self, self.config.platform_name))
         sidebar_layout.addStretch(1)
         sidebar_layout.addWidget(self.settings_nav)
@@ -268,6 +269,24 @@ class MainWindow(QMainWindow):
             card.action_clicked.connect(self._handle_card_action)
             self.cards[app.id] = card
         self._relayout_cards(force=True)
+
+    def _show_settings(self) -> None:
+        SettingsDialog(self.config, self, self._application_added).exec()
+
+    def _application_added(self, app_id: str) -> None:
+        refreshed = {app.id: app for app in discover_apps(self.config.paths.apps_directory, include_disabled=True)}
+        app = refreshed.get(app_id)
+        if app is None:
+            return
+        self.apps = [refreshed.get(existing.id, existing) for existing in self.apps]
+        self.apps.append(app)
+        self._archived_ids.discard(app_id)
+        card = AppCard(app)
+        card.action_clicked.connect(self._handle_card_action)
+        self.cards[app.id] = card
+        if app.category not in [self.category.itemText(i) for i in range(self.category.count())]:
+            self.category.insertItem(self.category.count() - 1, ui_icon("tag", "#85858e"), app.category)
+        self.apply_filters()
 
     def _handle_card_action(self, app_id: str, action: str) -> None:
         """Route the card's single primary action or overflow command."""
