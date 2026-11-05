@@ -293,11 +293,40 @@ graph is absent.
 
 ### Visual architecture
 
-![Simple local architecture](docs/architecture-simple.svg)
+Simple architecture:
 
-![Detailed developer architecture](docs/architecture-detailed.svg)
+```mermaid
+flowchart TB
+    USER["User"]
+    subgraph WIN["User's Windows machine"]
+        direction TB
+        subgraph DRIVE["Mounted network drive"]
+            START["START_LAUNCHER<br/>.bat / .vbs / .lnk"]
+            APPFILES["Streamlit app files"]
+            CODE["Unified Pipeline Launcher code"]
+            PY["Bundled Python 3.11.9 runtime"]
+        end
+        USER --> START
+        START --> PY --> CODE --> UI["Unified Pipeline Launcher UI<br/>runs on Windows"]
+        APPFILES --> APPS["Streamlit applications<br/>local Python processes"]
+        UI --> APPS
+        APPS --> LOCAL["127.0.0.1:&lt;dynamic-port&gt;"]
+        LOCAL --> BROWSER["Browser on same Windows machine"]
+        UI --> BROWSER
+    end
+    LAN["Other computers on Wi-Fi/LAN<br/><b>BLOCKED</b>"]
+    API["External APIs<br/><b>NOT USED</b>"]
+    LAN -. "Cannot access localhost" .-> LOCAL
+    API -. "No launcher connection" .-> WIN
+    classDef local fill:#132b36,stroke:#079bd3,color:#fff,stroke-width:2px;
+    classDef drive fill:#22282d,stroke:#74829b,color:#fff,stroke-width:2px;
+    classDef blocked fill:#3a2020,stroke:#e05252,color:#fff,stroke-width:2px;
+    class USER,UI,APPS,LOCAL,BROWSER local;
+    class START,APPFILES,CODE,PY drive;
+    class LAN,API blocked;
+```
 
-The detailed runtime flow is also available as an expandable GitHub diagram:
+Complex architecture:
 
 ```mermaid
 flowchart TB
@@ -313,7 +342,7 @@ flowchart TB
         end
         UI["Unified Pipeline Launcher UI<br/>PySide6 desktop application"]
         DISC["Application discovery and validation"]
-        ENV["Per-app Python environment"]
+        ENV["Per-app Python environment<br/>existing packages or requirements"]
         PROC["Process Manager"]
         PORT["Dynamic local port allocator"]
         APP1["Streamlit App A<br/>local Python process"]
@@ -323,12 +352,18 @@ flowchart TB
         LOCAL2["127.0.0.1:8502"]
         LOCALN["127.0.0.1:&lt;dynamic-port&gt;"]
         BROWSER["Isolated browser sessions<br/>temporary profiles, no extensions"]
-        DATA["Local input/output data"]
+        DATA["Local input/output data<br/>CSV, Excel, approved files"]
         LOGS["Local logs and runtime cache"]
-        STATUS["Application status"]
+        STATUS["Application status<br/>stopped, starting, running, failed"]
         USER --> START
-        START --> PY --> CODE --> UI
-        UI --> CONFIG --> DISC --> ENV --> PROC --> PORT
+        START --> PY
+        PY --> CODE
+        CODE --> UI
+        UI --> CONFIG
+        CONFIG --> DISC
+        DISC --> ENV
+        ENV --> PROC
+        PROC --> PORT
         PROC --> APP1
         PROC --> APP2
         PROC --> APPN
@@ -345,7 +380,8 @@ flowchart TB
         APP1 --> LOGS
         APP2 --> LOGS
         APPN --> LOGS
-        PROC --> STATUS --> UI
+        PROC --> STATUS
+        STATUS --> UI
         APPS --> DISC
         APPS --> APP1
         APPS --> APP2
@@ -354,11 +390,17 @@ flowchart TB
     LAN["Other computers<br/>same Wi-Fi/LAN<br/><b>BLOCKED</b>"]
     INTERNET["Internet / external services<br/><b>NOT REQUIRED</b>"]
     CLOUD["Cloud APIs / remote databases<br/><b>NOT USED BY LAUNCHER</b>"]
-    LAN -. "Cannot access localhost ports" .-> LOCAL1
-    LAN -. "Cannot access localhost ports" .-> LOCAL2
-    LAN -. "Cannot access localhost ports" .-> LOCALN
+    LAN -. "Cannot access 127.0.0.1 ports" .-> LOCAL1
+    LAN -. "Cannot access 127.0.0.1 ports" .-> LOCAL2
+    LAN -. "Cannot access 127.0.0.1 ports" .-> LOCALN
     INTERNET -. "No launcher connection" .-> WIN
-    CLOUD -. "No launcher connection" .-> WIN
+    CLOUD -. "No launcher connection" .-> APP1
+    classDef process fill:#132b36,stroke:#079bd3,color:#fff,stroke-width:2px;
+    classDef storage fill:#22282d,stroke:#74829b,color:#fff,stroke-width:2px;
+    classDef external fill:#3a2020,stroke:#e05252,color:#fff,stroke-width:2px;
+    class USER,UI,DISC,ENV,PROC,PORT,APP1,APP2,APPN,LOCAL1,LOCAL2,LOCALN,BROWSER,STATUS process;
+    class START,CODE,PY,APPS,CONFIG,DATA,LOGS storage;
+    class LAN,INTERNET,CLOUD external;
 ```
 
 ## Development
