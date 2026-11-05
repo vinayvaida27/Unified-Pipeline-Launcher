@@ -38,6 +38,8 @@ PACKAGE_ALIASES = {
     "psycopg2": "psycopg2-binary",
     "pyarrow": "pyarrow",
     "pymysql": "PyMySQL",
+    "pythoncom": "pywin32",
+    "pywintypes": "pywin32",
     "rasterio": "rasterio",
     "requests": "requests",
     "scipy": "scipy",
@@ -49,6 +51,9 @@ PACKAGE_ALIASES = {
     "torch": "torch",
     "tensorflow": "tensorflow",
     "uvicorn": "uvicorn",
+    "win32api": "pywin32",
+    "win32com": "pywin32",
+    "win32con": "pywin32",
     "xlsxwriter": "XlsxWriter",
     "yaml": "PyYAML",
 }

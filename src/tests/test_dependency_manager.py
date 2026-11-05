@@ -9,6 +9,8 @@ def test_maps_common_imports_to_distribution_names():
     assert distribution_name_for_import("PIL") == "Pillow"
     assert distribution_name_for_import("Bio") == "biopython"
     assert distribution_name_for_import("sklearn") == "scikit-learn"
+    assert distribution_name_for_import("pythoncom") == "pywin32"
+    assert distribution_name_for_import("win32com") == "pywin32"
     assert distribution_name_for_import("pandas") == "pandas"
 
 
