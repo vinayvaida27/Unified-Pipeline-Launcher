@@ -2,7 +2,14 @@ from __future__ import annotations
 
 import json
 
-from launcher.dependency_manager import scan_python_dependencies, update_runtime_dependencies
+from launcher.dependency_manager import distribution_name_for_import, scan_python_dependencies, update_runtime_dependencies
+
+
+def test_maps_common_imports_to_distribution_names():
+    assert distribution_name_for_import("PIL") == "Pillow"
+    assert distribution_name_for_import("Bio") == "biopython"
+    assert distribution_name_for_import("sklearn") == "scikit-learn"
+    assert distribution_name_for_import("pandas") == "pandas"
 
 
 def test_scans_unique_third_party_imports(copied_apps, tmp_path):

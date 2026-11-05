@@ -115,6 +115,13 @@ branded launcher, refreshes its shortcut, and reports failed checks. Maintenance
 installation requests `--link-mode=copy` so the local uv cache also works with
 mapped/UNC destinations.
 
+The Settings package updater scans registered app imports, maps common import
+names to their distribution names, checks the bundled runtime, and installs
+missing packages one at a time. It uses a local pip cache with retries,
+timeouts, and binary preference before writing into the shared runtime. A
+network runtime must be writable; failed package details are shown in Settings
+and saved under the local package cache for retry and diagnosis.
+
 Shared-runtime maintenance holds an exclusive updater lock and prepares a
 complete sibling candidate. It validates the candidate, retains the old runtime
 as `runtime.previous-<id>`, activates the replacement, and validates the final

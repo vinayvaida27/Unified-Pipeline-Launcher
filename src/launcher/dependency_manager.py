@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import ast
 import json
+import os
 import subprocess
 import sys
 from datetime import datetime, timezone
@@ -14,16 +15,50 @@ from .path_utils import atomic_write_json
 
 PACKAGE_ALIASES = {
     "Bio": "biopython",
+    "bokeh": "bokeh",
     "PIL": "Pillow",
     "bs4": "beautifulsoup4",
     "cv2": "opencv-python",
+    "dask": "dask",
     "dateutil": "python-dateutil",
     "fitz": "pymupdf",
+    "flask": "Flask",
+    "fastapi": "fastapi",
+    "geopandas": "geopandas",
+    "h5py": "h5py",
+    "httpx": "httpx",
+    "jinja2": "Jinja2",
+    "lxml": "lxml",
+    "networkx": "networkx",
+    "numpy": "numpy",
+    "openpyxl": "openpyxl",
+    "pandas": "pandas",
+    "plotly": "plotly",
+    "polars": "polars",
+    "psycopg2": "psycopg2-binary",
+    "pyarrow": "pyarrow",
+    "pymysql": "PyMySQL",
+    "rasterio": "rasterio",
+    "requests": "requests",
+    "scipy": "scipy",
     "skimage": "scikit-image",
     "sklearn": "scikit-learn",
+    "sqlalchemy": "SQLAlchemy",
+    "statsmodels": "statsmodels",
+    "sympy": "sympy",
+    "torch": "torch",
+    "tensorflow": "tensorflow",
+    "uvicorn": "uvicorn",
+    "xlsxwriter": "XlsxWriter",
     "yaml": "PyYAML",
 }
 PACKAGE_IMPORTS = {value: key for key, value in PACKAGE_ALIASES.items()}
+
+
+def distribution_name_for_import(module: str) -> str:
+    """Map a top-level Python import to its PyPI distribution name."""
+
+    return PACKAGE_ALIASES.get(module, module)
 
 
 def scan_python_dependencies(apps_directory: Path) -> list[str]:
@@ -62,7 +97,7 @@ def scan_python_dependencies(apps_directory: Path) -> list[str]:
                 elif isinstance(node, ast.ImportFrom) and node.level == 0 and node.module:
                     modules.add(node.module.split(".", 1)[0])
     packages = {
-        PACKAGE_ALIASES.get(module, module)
+        distribution_name_for_import(module)
         for module in modules
         if module not in stdlib and module not in {"streamlit"} and module not in local_modules
     }
@@ -102,6 +137,8 @@ def update_runtime_dependencies(
     requirements_path = state_directory / "discovered-requirements.txt"
     requirements_path.write_text("\n".join(packages) + ("\n" if packages else ""), encoding="utf-8")
     missing = _missing_packages(runtime_python, packages)
+    if missing:
+        _ensure_runtime_writable(runtime_python)
     if progress:
         progress(f"Found {len(packages)} packages; {len(missing)} need installation")
     installed: list[str] = []
@@ -111,7 +148,12 @@ def update_runtime_dependencies(
         if progress:
             progress(f"installing|{package}")
         result = subprocess.run(
-            [str(runtime_python), "-I", "-m", "pip", "install", "--disable-pip-version-check", "--no-input", "--retries", "5", "--timeout", "30", package],
+            [
+                str(runtime_python), "-I", "-m", "pip", "install",
+                "--disable-pip-version-check", "--no-input", "--prefer-binary",
+                "--retries", "5", "--timeout", "30", "--cache-dir",
+                str(state_directory / "pip-cache"), package,
+            ],
             capture_output=True,
             text=True,
             check=False,
@@ -136,3 +178,19 @@ def update_runtime_dependencies(
         {"updated_at": datetime.now(timezone.utc).isoformat(), "packages": packages, "installed": skipped + installed, "failed": failed},
     )
     return {"packages": packages, "missing": missing, "installed": installed, "skipped": skipped, "failed": failed, "errors": failures}
+
+
+def _ensure_runtime_writable(runtime_python: Path) -> None:
+    """Fail early with a useful message instead of partially installing on SMB."""
+
+    if not runtime_python.is_file():
+        raise FileNotFoundError(f"Bundled runtime not found: {runtime_python}")
+    probe = runtime_python.parent / ".launcher-runtime-write-test"
+    try:
+        probe.write_text("ok", encoding="ascii")
+        probe.unlink()
+    except OSError as exc:
+        raise PermissionError(
+            f"Bundled runtime is not writable: {runtime_python}. "
+            "Grant write access or run the maintainer runtime update on the release share."
+        ) from exc
