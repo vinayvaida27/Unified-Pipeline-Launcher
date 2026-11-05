@@ -291,6 +291,12 @@ Understand-Anything can generate `.ua/knowledge-graph.json` for deeper future
 LLM exploration; this section is the stable human-readable context when the
 graph is absent.
 
+### Visual architecture
+
+![Simple local architecture](docs/architecture-simple.svg)
+
+![Detailed developer architecture](docs/architecture-detailed.svg)
+
 ## Development
 
 To convert an existing Python script into a launcher-managed Streamlit app, use
