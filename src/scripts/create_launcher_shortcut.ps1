@@ -72,16 +72,9 @@ $Arguments = "`"$LauncherScript`""
 $WorkingDirectory = $Root
 $LauncherIcon = Join-Path $SourceRoot "assets\launcher\launcher.ico"
 
-if (Test-Path -LiteralPath $PortableLauncher) {
-    $TargetPath = $PortableLauncher
-    $Arguments = "--config `"$(Join-Path $Root 'config\launcher_config.json')`" --no-local-cache"
-    $LauncherIcon = $PortableLauncher
-} elseif (Test-Path -LiteralPath $BuiltLauncher) {
-    $TargetPath = $BuiltLauncher
-    $Arguments = "--config `"$(Join-Path $BuiltLauncherRoot 'config\launcher_config.json')`" --no-local-cache"
-    $WorkingDirectory = $BuiltLauncherRoot
-    $LauncherIcon = $BuiltLauncher
-}
+# Keep the shortcut on the verified VBS/Python bootstrap. The packaged EXE is
+# still available for explicit release launches, but must not bypass startup
+# validation or source-mode fallback when it is stale.
 
 $Shell = New-Object -ComObject WScript.Shell
 $Shortcut = $Shell.CreateShortcut($ShortcutPath)
