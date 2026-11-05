@@ -8,7 +8,7 @@ import re
 from PySide6.QtCore import QThreadPool
 from PySide6.QtWidgets import (
     QDialog, QFileDialog, QFormLayout, QGroupBox, QLabel,
-    QLineEdit, QMessageBox, QPushButton, QToolButton, QVBoxLayout,
+    QLineEdit, QPushButton, QTableWidget, QTableWidgetItem, QToolButton, QVBoxLayout,
 )
 
 from ..app_discovery import discover_apps
@@ -65,11 +65,16 @@ class SettingsDialog(QDialog):
         self.update_button = QPushButton("Scan and update Python packages")
         self.update_button.clicked.connect(self._update_packages)
         self.package_status = QLabel()
-        layout.addWidget(group); layout.addWidget(advanced); layout.addWidget(advanced_box); layout.addWidget(self.error); layout.addWidget(self.add_button); layout.addWidget(self.update_button); layout.addWidget(self.package_status)
+        self.package_table = QTableWidget(0, 3)
+        self.package_table.setHorizontalHeaderLabels(("Library", "Status", "Details"))
+        self.package_table.setMinimumHeight(130)
+        self.package_table.horizontalHeader().setStretchLastSection(True)
+        layout.addWidget(group); layout.addWidget(advanced); layout.addWidget(advanced_box); layout.addWidget(self.error); layout.addWidget(self.add_button); layout.addWidget(self.update_button); layout.addWidget(self.package_status); layout.addWidget(self.package_table)
 
     def _update_packages(self) -> None:
         self.update_button.setEnabled(False)
         self.package_status.setText("Scanning applications…")
+        self.package_table.setRowCount(0)
 
         def work(progress):
             return update_runtime_dependencies(
@@ -80,13 +85,20 @@ class SettingsDialog(QDialog):
             )
 
         worker = Worker(work)
-        worker.signals.progress.connect(self.package_status.setText)
+        worker.signals.progress.connect(self._package_progress)
         worker.signals.finished.connect(self._packages_updated)
         worker.signals.failed.connect(lambda message, details: self._packages_failed(message))
         self.thread_pool.start(worker)
 
     def _packages_updated(self, result: dict) -> None:
         self.update_button.setEnabled(True)
+        self.package_table.setRowCount(0)
+        for package in result["skipped"]:
+            self._set_package_row(package, "✓ Installed", "Already available")
+        for package in result["installed"]:
+            self._set_package_row(package, "✓ Installed", "Installed successfully")
+        for package, error in zip(result["failed"], result["errors"]):
+            self._set_package_row(package, "✕ Failed", error)
         self.package_status.setText(
             f"Package update complete: {len(result['installed'])} installed, "
             f"{len(result['skipped'])} already available, {len(result['failed'])} failed."
@@ -95,6 +107,32 @@ class SettingsDialog(QDialog):
     def _packages_failed(self, message: str) -> None:
         self.update_button.setEnabled(True)
         self.package_status.setText(f"Package update failed: {message}")
+
+    def _set_package_row(self, package: str, status: str, details: str) -> None:
+        row = self.package_table.rowCount()
+        self.package_table.insertRow(row)
+        self.package_table.setItem(row, 0, QTableWidgetItem(package))
+        self.package_table.setItem(row, 1, QTableWidgetItem(status))
+        self.package_table.setItem(row, 2, QTableWidgetItem(details))
+
+    def _package_progress(self, message: str) -> None:
+        parts = message.split("|", 2)
+        if len(parts) == 2 and parts[0] == "installing":
+            self._set_package_row(parts[1], "… Installing", "pip is resolving and installing")
+        elif len(parts) == 2 and parts[0] == "installed":
+            self._set_package_status(parts[1], "✓ Installed", "Installed successfully")
+        elif len(parts) == 3 and parts[0] == "failed":
+            self._set_package_status(parts[1], "✕ Failed", parts[2])
+        else:
+            self.package_status.setText(message)
+
+    def _set_package_status(self, package: str, status: str, details: str) -> None:
+        for row in range(self.package_table.rowCount()):
+            if self.package_table.item(row, 0).text() == package:
+                self.package_table.item(row, 1).setText(status)
+                self.package_table.item(row, 2).setText(details)
+                return
+        self._set_package_row(package, status, details)
 
     def _browse_python(self) -> None:
         path, _ = QFileDialog.getOpenFileName(self, "Select Streamlit application", "", "Python files (*.py)")

@@ -108,8 +108,10 @@ def update_runtime_dependencies(
     failed: list[str] = []
     failures: list[str] = []
     for package in missing:
+        if progress:
+            progress(f"installing|{package}")
         result = subprocess.run(
-            [str(runtime_python), "-I", "-m", "pip", "install", "--disable-pip-version-check", package],
+            [str(runtime_python), "-I", "-m", "pip", "install", "--disable-pip-version-check", "--no-input", "--retries", "5", "--timeout", "30", package],
             capture_output=True,
             text=True,
             check=False,
@@ -117,10 +119,14 @@ def update_runtime_dependencies(
         )
         if result is None or result.returncode == 0:
             installed.append(package)
+            if progress:
+                progress(f"installed|{package}")
         else:
             failed.append(package)
             detail = (result.stderr or result.stdout or "pip returned a failure").strip().splitlines()[-1]
             failures.append(f"{package}: {detail}")
+            if progress:
+                progress(f"failed|{package}|{detail}")
         if progress:
             progress(f"Packages: {len(installed)} installed, {len(failed)} failed")
     (state_directory / "package-update-errors.log").write_text("\n".join(failures) + ("\n" if failures else ""), encoding="utf-8")
