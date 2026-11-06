@@ -297,6 +297,9 @@ class MainWindow(QMainWindow):
 
     def _handle_card_action(self, app_id: str, action: str) -> None:
         """Route the card's single primary action or overflow command."""
+        if action == "details":
+            self._show_app_details(app_id)
+            return
 
         handlers = {
             "start": self.open_app,
@@ -311,6 +314,19 @@ class MainWindow(QMainWindow):
         handler = handlers.get(action)
         if handler:
             handler(app_id)
+
+    def _show_app_details(self, app_id: str) -> None:
+        app = self._apps_by_id[app_id]
+        state = self.process_manager.get(app_id)
+        details = [
+            f"Path: {app.entrypoint}",
+            f"Environment: {state.environment_path if state else 'Shared runtime'}",
+            f"Requirements: {app.requirements or 'Automatic import scan'}",
+            f"Port: {state.port if state and state.port else 'Not running'}",
+            f"Last launch: {state.start_time if state else 'Not started'}",
+            f"Log: {state.log_path if state and state.log_path else 'No log yet'}",
+        ]
+        QMessageBox.information(self, app.name, "\n".join(details))
 
     def apply_filters(self) -> None:
         query = self.search.text().strip().lower()

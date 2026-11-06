@@ -106,6 +106,8 @@ class AppCard(QFrame):
 
     def _show_menu(self) -> None:
         menu = QMenu(self)
+        menu.addAction("App details", lambda: self.action_clicked.emit(self.app.id, "details"))
+        menu.addSeparator()
         menu.addAction("View log", lambda: self.action_clicked.emit(self.app.id, "log"))
         if self.archived:
             if self.current_status == ApplicationStatus.RUNNING:
