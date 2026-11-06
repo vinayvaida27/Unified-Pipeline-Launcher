@@ -60,6 +60,9 @@ class MainWindow(QMainWindow):
         self.config = config
         self.apps = apps
         self._apps_by_id = {app.id: app for app in apps}
+        self._apps_by_category: dict[str, list[ApplicationManifest]] = {}
+        for app in apps:
+            self._apps_by_category.setdefault(app.category, []).append(app)
         self._app_search_text = {
             app.id: f"{app.name} {app.description} {app.category}".lower() for app in apps
         }
@@ -293,6 +296,7 @@ class MainWindow(QMainWindow):
         self.apps = [refreshed.get(existing.id, existing) for existing in self.apps]
         self.apps.append(app)
         self._apps_by_id[app.id] = app
+        self._apps_by_category.setdefault(app.category, []).append(app)
         self._app_search_text[app.id] = f"{app.name} {app.description} {app.category}".lower()
         self._archived_ids.discard(app_id)
         card = AppCard(app)
@@ -339,14 +343,16 @@ class MainWindow(QMainWindow):
         query = self.search.text().strip().lower()
         category = self.category.currentText()
         visible_ids = []
-        for app in self.apps:
+        if category == "Archived":
+            candidates = [self._apps_by_id[app_id] for app_id in self._archived_ids if app_id in self._apps_by_id]
+        elif category == "All applications":
+            candidates = [app for app in self.apps if app.id not in self._archived_ids]
+        else:
+            candidates = [app for app in self._apps_by_category.get(category, ()) if app.id not in self._archived_ids]
+        for app in candidates:
             haystack = self._app_search_text[app.id]
             is_archived = app.id in self._archived_ids
-            category_match = (
-                (category == "All applications" and not is_archived)
-                or (category == "Archived" and is_archived)
-                or (category not in {"All applications", "Archived"} and not is_archived and app.category == category)
-            )
+            category_match = (category == "Archived" and is_archived) or category != "Archived"
             visible = (not query or query in haystack) and category_match
             if visible:
                 visible_ids.append(app.id)
