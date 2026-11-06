@@ -93,6 +93,7 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--development", action="store_true")
     args = parser.parse_args(argv)
 
+    from PySide6.QtCore import QSettings
     from PySide6.QtGui import QIcon
     from PySide6.QtWidgets import QApplication, QMessageBox
 
