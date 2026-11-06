@@ -82,6 +82,8 @@ def test_classifier_import_is_discovered(copied_apps):
 
 def test_import_error_repair_maps_distribution():
     assert repair_requirement_from_error("ModuleNotFoundError: No module named 'sklearn'") == "scikit-learn"
+    assert repair_requirement_from_error("ModuleNotFoundError: No module named 'tensorflow.python'") == "tensorflow"
+    assert distribution_name_for_import("tensorflow.python") == "tensorflow"
     assert repair_requirement_from_error("unrelated failure") is None
 
 

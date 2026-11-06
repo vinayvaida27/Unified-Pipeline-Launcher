@@ -51,6 +51,7 @@ PACKAGE_ALIASES = {
     "sympy": "sympy",
     "torch": "torch",
     "tensorflow": "tensorflow",
+    "tensorflow.python": "tensorflow",
     "uvicorn": "uvicorn",
     "win32api": "pywin32",
     "win32com": "pywin32",
@@ -66,7 +67,7 @@ IMPORT_ERROR_PATTERN = re.compile(r"No module named ['\"]([^'\"]+)['\"]")
 def distribution_name_for_import(module: str) -> str:
     """Map a top-level Python import to its PyPI distribution name."""
 
-    return PACKAGE_ALIASES.get(module, module)
+    return PACKAGE_ALIASES.get(module, PACKAGE_ALIASES.get(module.split(".", 1)[0], module.split(".", 1)[0]))
 
 
 def repair_requirement_from_error(error_text: str) -> str | None:
@@ -195,9 +196,14 @@ def _missing_packages(runtime_python: Path, packages: list[str]) -> list[str]:
         return []
     modules = [PACKAGE_IMPORTS.get(package, package) for package in packages]
     script = (
-        "import importlib.util, sys; "
-        "print('\\n'.join(module for module in sys.argv[1:] "
-        "if importlib.util.find_spec(module) is None))"
+        "import importlib, sys\n"
+        "missing=[]\n"
+        "for module in sys.argv[1:]:\n"
+        "  try:\n"
+        "    importlib.import_module(module)\n"
+        "  except Exception:\n"
+        "    missing.append(module)\n"
+        "print('\\n'.join(missing))"
     )
     result = subprocess.run(
         [str(runtime_python), "-I", "-c", script, *modules],
