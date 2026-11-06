@@ -35,11 +35,12 @@ class HealthChecker:
         """
         root_url = f"http://127.0.0.1:{port}"
         health_url = f"{root_url}{HEALTH_PATH}"
-        deadline = time.time() + timeout_seconds
+        deadline = time.monotonic() + timeout_seconds
+        poll_delay = 0.03
         log_signature = None
         log_url = None
 
-        while time.time() < deadline:
+        while time.monotonic() < deadline:
             exit_code = process.poll()
             if exit_code is not None:
                 raise ApplicationHealthCheckError(
@@ -64,7 +65,10 @@ class HealthChecker:
             if self._url_ok(health_url) or self._url_ok(root_url):
                 return root_url
 
-            time.sleep(0.1)
+            # Fast first checks make local apps feel instant; back off when a
+            # slow app is still starting to avoid needless localhost traffic.
+            time.sleep(poll_delay)
+            poll_delay = min(0.2, poll_delay * 1.6)
 
         raise ApplicationHealthCheckError(
             f"Application did not become healthy within {timeout_seconds} seconds"
