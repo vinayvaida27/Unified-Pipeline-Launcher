@@ -1,13 +1,15 @@
 {
-  // Strict runtime data lives in apps.json. This commented template documents
-  // the fields accepted by the launcher; JSON comments are not valid in apps.json.
-  "schema_version": 1,
+  // v2 uses explicit source/display/runtime objects. Existing v1 apps.json files remain supported.
+  "schema_version": 2,
+  "policies": {
+    "allow_external_paths": false,
+    "allowed_roots": ["apps"],
+    "require_loopback": true
+  },
   "defaults": {
     "type": "streamlit",
-    "entrypoint": "app.py",
-    "icon": "assets/icon.svg",
-    "enabled": true,
-    "archived": false,
+    "source": {"entrypoint": "app.py", "requirements": null, "icon": null},
+    "runtime": {"environment": "shared", "python_version": "3.11"},
     "launch": {
       "address": "127.0.0.1",
       "port": "dynamic",
@@ -19,39 +21,16 @@
   },
   "applications": [
     {
-      "id": "my-app",              // stable slug used by the launcher
-      "folder": "my_app",          // folder below apps/
-      "name": "My App",
-      "version": "1.0.0",
-      "description": "Short description shown on the card.",
-      "category": "General",
-      "display_order": 1,
-      "enabled": true,
-      "archived": false             // true moves it out of All applications
+      "id": "my-app",
+      "source": {"folder": "my_app"},
+      "display": {"name": "My App", "description": "Short description.", "category": "General", "order": 1, "enabled": true, "archived": false},
+      "runtime": {"environment": "shared"}
     },
     {
       "id": "external-app",
-      "path": "D:/shared/pipelines/my_app.py", // direct file; no folder needed
-      "requirements_path": "D:/shared/pipelines/requirements.txt", // optional explicit dependency file
-      "icon_path": "D:/shared/pipelines/assets/icon.svg", // optional explicit icon
-      "name": "External App",
-      "version": "1.0.0",
-      "description": "A Streamlit file stored outside apps/.",
-      "category": "External",
-      "display_order": 2
-      // requirements and icon are optional for direct files
-    },
-    {
-      "id": "project-app",
-      "project_path": "D:/shared/pipelines/project-app", // folder containing app.py
-      "app_path": "app.py", // optional; defaults to project_path/app.py
-      "name": "Project App",
-      "version": "1.0.0",
-      "description": "A project directory with optional assets and requirements.",
-      "category": "External",
-      "display_order": 3
-      // requirements_path defaults to requirements.txt, then import scanning
-      // creates .launcher-requirements.txt when no file exists.
+      "source": {"entrypoint": "D:/approved/pipelines/my_app.py", "requirements": "D:/approved/pipelines/requirements.txt", "icon": null},
+      "display": {"name": "External App", "description": "A direct Streamlit file.", "category": "External", "order": 2},
+      "runtime": {"environment": "auto"}
     }
   ]
 }

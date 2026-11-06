@@ -8,7 +8,7 @@ import re
 import sys
 from pathlib import Path
 
-from .constants import DEFAULT_ADDRESS, SUPPORTED_APP_TYPES, SUPPORTED_SCHEMA_VERSION
+from .constants import DEFAULT_ADDRESS, SUPPORTED_APP_TYPES, SUPPORTED_SCHEMA_VERSION, SUPPORTED_REGISTRY_SCHEMA_VERSIONS
 from .exceptions import ManifestValidationError, SecurityValidationError
 from .models import ApplicationManifest, LaunchSettings
 from .path_utils import ensure_within_directory, expand_path, read_json, reject_path_traversal
@@ -16,6 +16,11 @@ from .security import reject_command_injection_fields, validate_app_id
 
 LOG = logging.getLogger(__name__)
 SEMVER = re.compile(r"^\d+\.\d+\.\d+(?:[-+][A-Za-z0-9.-]+)?$")
+_V2_REGISTRY_KEYS = {"schema_version", "defaults", "policies", "applications"}
+_V2_APP_KEYS = {"id", "source", "display", "runtime", "launch", "version", "name", "description", "category", "display_order", "enabled", "archived", "type"}
+_V2_SOURCE_KEYS = {"folder", "project", "project_path", "entrypoint", "path", "requirements", "requirements_path", "icon", "icon_path"}
+_V2_DISPLAY_KEYS = {"name", "description", "category", "order", "enabled", "archived"}
+_V2_RUNTIME_KEYS = {"environment", "python_version"}
 
 
 def _required(data: dict, key: str):
@@ -62,6 +67,82 @@ def _resolve_registry_path(raw: str, apps_directory: Path) -> Path:
         if candidate.exists():
             return candidate
     return expand_path(str(raw), apps_directory)
+
+
+def _validate_v2_allowed_path(raw: str, apps_directory: Path, policies: dict) -> None:
+    """Validate external v2 paths without changing mapped/UNC spelling."""
+    if not Path(str(raw)).is_absolute():
+        if ".." in Path(str(raw)).parts:
+            raise SecurityValidationError(f"Unsafe v2 relative path: {raw}")
+        return
+    if not bool(policies.get("allow_external_paths", False)):
+        raise SecurityValidationError(f"External paths are disabled by registry policy: {raw}")
+    roots = policies.get("allowed_roots", [])
+    if roots:
+        candidate = expand_path(str(raw))
+        allowed = [expand_path(str(root), apps_directory.parent) for root in roots]
+        if not any(candidate == root or root in candidate.parents for root in allowed):
+            raise SecurityValidationError(f"Path is outside approved roots: {raw}")
+
+
+def _normalize_v2_entry(apps_directory: Path, defaults: dict, app_data: dict, policies: dict) -> dict:
+    """Translate a strict v2 entry into the existing flat manifest shape."""
+    unknown = set(app_data) - _V2_APP_KEYS
+    if unknown:
+        raise ManifestValidationError(f"Unknown v2 application fields: {', '.join(sorted(unknown))}")
+    source = app_data.get("source")
+    if not isinstance(source, dict):
+        raise ManifestValidationError("Schema v2 applications require a source object")
+    unknown_source = set(source) - _V2_SOURCE_KEYS
+    if unknown_source:
+        raise ManifestValidationError(f"Unknown v2 source fields: {', '.join(sorted(unknown_source))}")
+    locations = [key for key in ("folder", "project", "project_path", "entrypoint", "path") if source.get(key) not in (None, "")]
+    if len(locations) != 1:
+        raise ManifestValidationError("v2 source must contain exactly one of folder, project, entrypoint, or path")
+    display = app_data.get("display", {})
+    runtime = app_data.get("runtime", {})
+    launch = app_data.get("launch", {})
+    if not isinstance(display, dict) or not isinstance(runtime, dict) or not isinstance(launch, dict):
+        raise ManifestValidationError("v2 display, runtime, and launch fields must be objects")
+    if set(display) - _V2_DISPLAY_KEYS:
+        raise ManifestValidationError(f"Unknown v2 display fields: {', '.join(sorted(set(display) - _V2_DISPLAY_KEYS))}")
+    if set(runtime) - _V2_RUNTIME_KEYS:
+        raise ManifestValidationError(f"Unknown v2 runtime fields: {', '.join(sorted(set(runtime) - _V2_RUNTIME_KEYS))}")
+    for raw in (source.get(locations[0]), source.get("requirements"), source.get("requirements_path"), source.get("icon"), source.get("icon_path")):
+        if raw:
+            _validate_v2_allowed_path(str(raw), apps_directory, policies)
+    launch_defaults = defaults.get("launch", {})
+    runtime_defaults = defaults.get("runtime", {})
+    source_defaults = defaults.get("source", {})
+    merged = {
+        **defaults,
+        **app_data,
+        "schema_version": 2,
+        "id": app_data.get("id"),
+        "name": display.get("name", app_data.get("name")),
+        "description": display.get("description", app_data.get("description", "")),
+        "category": display.get("category", app_data.get("category", "General")),
+        "display_order": display.get("order", app_data.get("display_order")),
+        "enabled": display.get("enabled", app_data.get("enabled", True)),
+        "archived": display.get("archived", app_data.get("archived", False)),
+        "version": app_data.get("version", "1.0.0"),
+        "type": app_data.get("type", defaults.get("type", "streamlit")),
+        "launch": {**launch_defaults, **launch},
+        "python_version": runtime.get("python_version", runtime_defaults.get("python_version", defaults.get("python_version", "3.11"))),
+    }
+    location = locations[0]
+    if location in {"entrypoint", "path"}:
+        merged["path"] = source[location]
+    else:
+        merged["project_path"] = source[location]
+        merged["entrypoint"] = source.get("entrypoint", source_defaults.get("entrypoint", "app.py"))
+    merged["requirements_path"] = source.get("requirements", source.get("requirements_path", source_defaults.get("requirements")))
+    merged["icon_path"] = source.get("icon", source.get("icon_path", source_defaults.get("icon")))
+    merged["wheelhouse"] = defaults.get("wheelhouse", "wheelhouse")
+    merged["runtime_environment"] = runtime.get("environment", runtime_defaults.get("environment", "shared"))
+    if merged["runtime_environment"] not in {"shared", "auto", "isolated", "per_app"}:
+        raise ManifestValidationError("runtime.environment must be shared, auto, or isolated")
+    return merged
 
 
 def _infer_requirements(entrypoint: Path) -> Path | None:
@@ -147,7 +228,7 @@ def load_app_manifest(app_dir: Path) -> ApplicationManifest:
 def _load_app_manifest_data(app_dir: Path, data: dict, direct_entrypoint: Path | None = None) -> ApplicationManifest:
     """Validate application metadata against files inside app_dir."""
 
-    if int(data.get("schema_version", SUPPORTED_SCHEMA_VERSION)) != SUPPORTED_SCHEMA_VERSION:
+    if int(data.get("schema_version", SUPPORTED_SCHEMA_VERSION)) not in SUPPORTED_REGISTRY_SCHEMA_VERSIONS:
         raise ManifestValidationError("Unsupported application schema version")
     app_id = str(_required(data, "id"))
     validate_app_id(app_id)
@@ -238,17 +319,40 @@ def _load_app_manifest_data(app_dir: Path, data: dict, direct_entrypoint: Path |
 def _discover_from_registry(apps_directory: Path, include_disabled: bool) -> list[ApplicationManifest]:
     registry_path = apps_directory / "apps.json"
     registry = read_json(registry_path)
-    if registry.get("schema_version") != SUPPORTED_SCHEMA_VERSION:
+    schema_version = int(registry.get("schema_version", SUPPORTED_SCHEMA_VERSION))
+    if schema_version not in SUPPORTED_REGISTRY_SCHEMA_VERSIONS:
         raise ManifestValidationError("Unsupported app registry schema version")
     defaults = registry.get("defaults", {})
+    if not isinstance(defaults, dict) or not isinstance(registry.get("applications", []), list):
+        raise ManifestValidationError("Registry defaults and applications must have valid types")
+    policies = registry.get("policies", {}) if schema_version == 2 else {}
+    if schema_version == 2:
+        unknown = set(registry) - _V2_REGISTRY_KEYS
+        if unknown:
+            raise ManifestValidationError(f"Unknown v2 registry fields: {', '.join(sorted(unknown))}")
+        if not isinstance(policies, dict):
+            raise ManifestValidationError("Registry policies must be an object")
     discovered: list[ApplicationManifest] = []
     seen_ids: set[str] = set()
+    seen_paths: set[str] = set()
+    seen_orders: set[int] = set()
     for app_data in registry.get("applications", []):
         try:
+            if not isinstance(app_data, dict):
+                raise ManifestValidationError("Application entries must be objects")
+            if schema_version == 2:
+                app_data = _normalize_v2_entry(apps_directory, defaults, app_data, policies)
             app = _manifest_from_registry_entry(apps_directory, defaults, app_data)
             if app.id in seen_ids:
                 raise ManifestValidationError(f"Duplicate application ID: {app.id}")
+            normalized_path = str(app.entrypoint.resolve()).casefold()
+            if schema_version == 2 and normalized_path in seen_paths:
+                raise ManifestValidationError(f"Duplicate application entrypoint: {app.entrypoint}")
+            if schema_version == 2 and app.display_order in seen_orders:
+                raise ManifestValidationError(f"Duplicate display order: {app.display_order}")
             seen_ids.add(app.id)
+            seen_paths.add(normalized_path)
+            seen_orders.add(app.display_order)
             if app.enabled or include_disabled:
                 discovered.append(app)
         except (ManifestValidationError, SecurityValidationError, ValueError) as exc:

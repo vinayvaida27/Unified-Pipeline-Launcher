@@ -137,3 +137,36 @@ def test_explicit_requirement_and_icon_paths_are_used(copied_apps, tmp_path):
     assert app.entrypoint == entrypoint.resolve()
     assert app.requirements == requirements.resolve()
     assert app.icon == icon.resolve()
+
+
+def test_schema_v2_normalizes_explicit_source_and_display(copied_apps):
+    data = _load_registry(copied_apps)
+    data["schema_version"] = 2
+    data["policies"] = {"allow_external_paths": False, "allowed_roots": ["apps"], "require_loopback": True}
+    data["applications"] = [{
+        "id": "v2-app",
+        "source": {"folder": "01_hello_pipeline"},
+        "display": {"name": "V2 App", "description": "v2", "category": "Test", "order": 1, "enabled": True, "archived": False},
+        "runtime": {"environment": "shared"},
+    }]
+    _write_registry(copied_apps, data)
+    app = discover_apps(copied_apps)[0]
+    assert app.id == "v2-app"
+    assert app.name == "V2 App"
+    assert app.entrypoint.name == "app.py"
+
+
+def test_schema_v2_rejects_conflicting_sources(copied_apps):
+    data = _load_registry(copied_apps)
+    data["schema_version"] = 2
+    data["applications"] = [{"id": "bad", "source": {"folder": "01_hello_pipeline", "entrypoint": "app.py"}, "display": {"name": "bad", "order": 1}}]
+    _write_registry(copied_apps, data)
+    assert discover_apps(copied_apps) == []
+
+
+def test_schema_v2_rejects_unknown_fields(copied_apps):
+    data = _load_registry(copied_apps)
+    data["schema_version"] = 2
+    data["applications"] = [{"id": "bad", "source": {"folder": "01_hello_pipeline"}, "display": {"name": "bad", "order": 1}, "unexpected": True}]
+    _write_registry(copied_apps, data)
+    assert discover_apps(copied_apps) == []
