@@ -66,6 +66,9 @@ QScrollBar::handle:vertical { background: #3a414d; border-radius: 5px; min-heigh
 QScrollBar::handle:vertical:hover { background: #515a68; }
 QScrollBar::add-line:vertical, QScrollBar::sub-line:vertical { height: 0; }
 QScrollBar::add-page:vertical, QScrollBar::sub-page:vertical { background: transparent; }
+QListWidget, QTableWidget, QGroupBox { background: #191d24; color: #f5f5f7; border-color: #343a45; }
+QListWidget::item { color: #f5f5f7; padding: 8px; }
+QListWidget::item:selected { color: #ffffff; background: #343b48; }
 """
 
 LIGHT_STYLE = APP_STYLE + """
@@ -82,6 +85,8 @@ QMenu::item { color: #1D1D1F; }
 QPushButton { background: #FFFFFF; color: #1D1D1F; border-color: #D2D2D7; }
 QPushButton:hover { background: #E8E8ED; border-color: #0071E3; }
 QFrame#card { background: #FFFFFF; border-color: #D2D2D7; }
+QFrame#card:hover, QFrame#card[state="running"], QFrame#card[state="starting"], QFrame#card[state="failed"] { background: #FBFBFD; border-color: #D2D2D7; }
+QFrame#card:hover QLabel#title, QFrame#card[state="running"] QLabel#title, QFrame#card[state="starting"] QLabel#title, QFrame#card[state="failed"] QLabel#title { color: #1D1D1F; }
 QLabel#badge { background: #E8E8ED; color: #1D1D1F; }
 """
 
