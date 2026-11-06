@@ -21,13 +21,13 @@ from .single_instance import SingleInstance
 LOG = logging.getLogger(__name__)
 
 
-def _apply_windows_dark_titlebar(window) -> None:
-    """Ask Windows for a native dark title bar without replacing window chrome."""
+def _apply_windows_titlebar(window, theme: str = "Dark") -> None:
+    """Keep native Windows title-bar chrome aligned with the selected theme."""
 
     if sys.platform != "win32":
         return
     try:
-        value = ctypes.c_int(1)
+        value = ctypes.c_int(0 if theme == "Light" else 1)
         ctypes.windll.dwmapi.DwmSetWindowAttribute(
             int(window.winId()), 20, ctypes.byref(value), ctypes.sizeof(value)
         )
@@ -65,7 +65,7 @@ def resolve_config_path(raw: str | None) -> Path:
 def _download_runtime_with_dialog(config, qt_app):
     """Download the pinned official runtime while showing progress."""
 
-    from PySide6.QtCore import Qt
+    from PySide6.QtCore import QSettings, Qt
     from PySide6.QtWidgets import QProgressDialog
 
     dialog = QProgressDialog("Preparing Python runtime...", "", 0, 0)
@@ -152,7 +152,8 @@ def main(argv: list[str] | None = None) -> int:
         window.activateWindow(),
     )
     window.show()
-    _apply_windows_dark_titlebar(window)
+    theme = str(QSettings("UnifiedPipelineLauncher", "Launcher").value("theme", "Light"))
+    _apply_windows_titlebar(window, theme)
     result = qt_app.exec()
     if config.launcher.stop_apps_on_exit:
         process_manager.stop_all()
