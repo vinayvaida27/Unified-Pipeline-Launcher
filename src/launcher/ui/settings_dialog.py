@@ -6,7 +6,7 @@ from pathlib import Path
 import re
 
 from PySide6.QtCore import QSettings, QThreadPool
-from PySide6.QtWidgets import QApplication, QComboBox, QHBoxLayout
+from PySide6.QtWidgets import QApplication, QComboBox, QHBoxLayout, QListWidget, QStackedWidget, QSplitter, QWidget
 from PySide6.QtWidgets import (
     QDialog, QFileDialog, QFormLayout, QGroupBox, QLabel,
     QLineEdit, QPushButton, QTableWidget, QTableWidgetItem, QToolButton, QVBoxLayout,
@@ -31,18 +31,30 @@ class SettingsDialog(QDialog):
         self.thread_pool = QThreadPool(self)
         self.setWindowTitle("Settings")
         layout = QVBoxLayout(self)
-        layout.addWidget(QLabel(f"Local cache: {config.paths.local_cache_directory}"))
-        layout.addWidget(QLabel(f"Apps directory: {config.paths.apps_directory}"))
-        layout.addWidget(QLabel(f"Runtime: {config.paths.runtime_python}"))
+        navigation = QListWidget()
+        navigation.setAccessibleName("Settings sections")
+        navigation.setFixedWidth(170)
+        stack = QStackedWidget()
+        self._settings_stack = stack
+        for title in ("Appearance", "Add application", "Package manager", "Runtime health", "Network drive", "Security", "Diagnostics"):
+            navigation.addItem(title)
+        navigation.currentRowChanged.connect(stack.setCurrentIndex)
+        splitter = QSplitter()
+        splitter.addWidget(navigation)
+        splitter.addWidget(stack)
+        splitter.setStretchFactor(1, 1)
+        layout.addWidget(splitter)
         appearance = QGroupBox("Appearance")
         appearance_form = QFormLayout(appearance)
         self.theme = QComboBox(); self.theme.addItems(["Dark", "Light", "High contrast"])
         self.theme.setAccessibleName("Color theme")
-        saved_theme = QSettings("UnifiedPipelineLauncher", "Launcher").value("theme", "Dark")
+        saved_theme = QSettings("UnifiedPipelineLauncher", "Launcher").value("theme", "Light")
         self.theme.setCurrentText(str(saved_theme))
         self.theme.currentTextChanged.connect(self._apply_theme)
         appearance_form.addRow("Theme", self.theme)
-        layout.addWidget(appearance)
+        appearance_page = QWidget(); appearance_layout = QVBoxLayout(appearance_page)
+        appearance_layout.addWidget(appearance); appearance_layout.addStretch(1)
+        stack.addWidget(appearance_page)
 
         group = QGroupBox("Add application")
         form = QFormLayout(group)
@@ -89,11 +101,26 @@ class SettingsDialog(QDialog):
         self.package_table.setMinimumHeight(130)
         self.package_table.horizontalHeader().setStretchLastSection(True)
         manual_row = QVBoxLayout(); manual_row.addWidget(self.manual_package); manual_row.addWidget(self.manual_button)
-        layout.addWidget(group); layout.addWidget(advanced); layout.addWidget(advanced_box); layout.addWidget(self.error); layout.addWidget(self.add_button); layout.addWidget(self.preview_button); layout.addWidget(self.update_button); layout.addLayout(manual_row); layout.addWidget(self.package_summary); layout.addWidget(self.package_status); layout.addWidget(self.package_table)
+        add_page = QWidget(); add_layout = QVBoxLayout(add_page)
+        add_layout.addWidget(group); add_layout.addWidget(advanced); add_layout.addWidget(advanced_box); add_layout.addWidget(self.error); add_layout.addWidget(self.add_button); add_layout.addStretch(1)
+        stack.addWidget(add_page)
+        package_page = QWidget(); package_layout = QVBoxLayout(package_page)
+        package_layout.addWidget(self.preview_button); package_layout.addWidget(self.update_button); package_layout.addLayout(manual_row); package_layout.addWidget(self.package_summary); package_layout.addWidget(self.package_status); package_layout.addWidget(self.package_table); stack.addWidget(package_page)
+        runtime_page = QWidget(); runtime_layout = QVBoxLayout(runtime_page)
+        runtime_layout.addWidget(QLabel(f"Local cache\n{config.paths.local_cache_directory}")); runtime_layout.addWidget(QLabel(f"Runtime\n{config.paths.runtime_python}")); runtime_layout.addStretch(1); stack.addWidget(runtime_page)
+        network_page = QWidget(); network_layout = QVBoxLayout(network_page)
+        network_layout.addWidget(QLabel(f"Application source\n{config.paths.apps_directory}")); network_layout.addWidget(QLabel("Streamlit binding: 127.0.0.1 only")); network_layout.addStretch(1); stack.addWidget(network_page)
+        for title, text in (("Security", "Loopback-only application sessions and isolated browser profiles."), ("Diagnostics", "Use the debug launcher and local logs for repair details.")):
+            page = QWidget(); page_layout = QVBoxLayout(page); page_layout.addWidget(QLabel(text)); page_layout.addStretch(1); stack.addWidget(page)
+        navigation.setCurrentRow(0)
 
     def _apply_theme(self, theme: str) -> None:
         QSettings("UnifiedPipelineLauncher", "Launcher").setValue("theme", theme)
-        QApplication.instance().setStyleSheet({"Light": LIGHT_STYLE, "High contrast": HIGH_CONTRAST_STYLE}.get(theme, APP_STYLE))
+        application = QApplication.instance()
+        if application is not None:
+            application.setStyleSheet({"Light": LIGHT_STYLE, "High contrast": HIGH_CONTRAST_STYLE}.get(theme, APP_STYLE))
+            for widget in application.topLevelWidgets():
+                widget.style().unpolish(widget); widget.style().polish(widget); widget.update()
 
     def _install_named_package(self) -> None:
         requirement = self.manual_package.text().strip()

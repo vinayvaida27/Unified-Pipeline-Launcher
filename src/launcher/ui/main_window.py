@@ -9,10 +9,11 @@ from threading import Event
 from urllib.parse import parse_qsl, urlencode, urlparse, urlunparse
 from uuid import uuid4
 
-from PySide6.QtCore import QSize, Qt, QThreadPool, QTimer, QUrl
+from PySide6.QtCore import QSettings, QSize, Qt, QThreadPool, QTimer, QUrl
 from PySide6.QtGui import QDesktopServices
 from PySide6.QtWidgets import (
     QComboBox,
+    QApplication,
     QFrame,
     QGridLayout,
     QHBoxLayout,
@@ -38,7 +39,7 @@ from .app_card import AppCard
 from .icons import ui_icon
 from .log_dialog import LogDialog
 from .settings_dialog import SettingsDialog
-from .styles import APP_STYLE
+from .styles import APP_STYLE, LIGHT_STYLE, HIGH_CONTRAST_STYLE
 from .workers import Worker
 
 LOG = logging.getLogger(__name__)
@@ -84,12 +85,18 @@ class MainWindow(QMainWindow):
         self.setWindowTitle(config.platform_name)
         self.resize(config.window.width, config.window.height)
         self.setMinimumSize(config.window.minimum_width, config.window.minimum_height)
-        self.setStyleSheet(APP_STYLE)
+        self._apply_theme(str(QSettings("UnifiedPipelineLauncher", "Launcher").value("theme", "Light")))
         self._build_ui()
         self.liveness_timer = QTimer(self)
         self.liveness_timer.setInterval(2000)
         self.liveness_timer.timeout.connect(self._sync_process_liveness)
         self.liveness_timer.start()
+
+    @staticmethod
+    def _apply_theme(theme: str) -> None:
+        application = QApplication.instance()
+        if application is not None:
+            application.setStyleSheet({"Light": LIGHT_STYLE, "High contrast": HIGH_CONTRAST_STYLE}.get(theme, APP_STYLE))
 
     def _build_ui(self) -> None:
         root = QWidget()
