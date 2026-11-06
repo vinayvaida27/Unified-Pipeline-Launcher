@@ -84,10 +84,20 @@ QComboBox QAbstractItemView, QMenu { background: #FFFFFF; color: #1D1D1F; border
 QMenu::item { color: #1D1D1F; }
 QPushButton { background: #FFFFFF; color: #1D1D1F; border-color: #D2D2D7; }
 QPushButton:hover { background: #E8E8ED; border-color: #0071E3; }
+QPushButton#navActive { background: #E8F1FF; color: #0071E3; border-color: #B8D5FF; }
+QPushButton#secondary, QPushButton#danger { background: #FFFFFF; color: #1D1D1F; border-color: #D2D2D7; }
+QPushButton#secondary:hover { background: #E8F1FF; color: #005FCC; border-color: #0071E3; }
+QPushButton#primary { background: #0071E3; color: #FFFFFF; border-color: #0071E3; }
+QPushButton#primary:hover { background: #005FCC; border-color: #005FCC; }
+QToolButton { background: #F2F2F7; color: #1D1D1F; border: 1px solid #D2D2D7; border-radius: 8px; }
 QFrame#card { background: #FFFFFF; border-color: #D2D2D7; }
 QFrame#card:hover, QFrame#card[state="running"], QFrame#card[state="starting"], QFrame#card[state="failed"] { background: #FBFBFD; border-color: #D2D2D7; }
 QFrame#card:hover QLabel#title, QFrame#card[state="running"] QLabel#title, QFrame#card[state="starting"] QLabel#title, QFrame#card[state="failed"] QLabel#title { color: #1D1D1F; }
 QLabel#badge { background: #E8E8ED; color: #1D1D1F; }
+QLabel#badgeRunning { background: #E5F7EC; color: #1B7F4B; }
+QLabel#badgeStarting { background: #FFF4D6; color: #8A5A00; }
+QLabel#badgeFailed { background: #FFE5E7; color: #B42332; }
+QLabel#summary[state="active"] { color: #1B7F4B; background: #E5F7EC; border-color: #B8E6C8; }
 """
 
 HIGH_CONTRAST_STYLE = APP_STYLE.replace("#0f1115", "#000000").replace("#15181e", "#000000").replace("#191d24", "#000000").replace("#f5f5f7", "#ffffff").replace("#aeb4bf", "#ffffff").replace("#858b96", "#ffffff").replace("#343a45", "#ffffff").replace("#2b313b", "#ffffff")
