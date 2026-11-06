@@ -72,11 +72,12 @@ QListWidget::item:selected { color: #ffffff; background: #343b48; }
 """
 
 LIGHT_STYLE = APP_STYLE + """
-QWidget#root, QWidget#content, QWidget#grid, QWidget#header, QWidget#toolbar, QDialog, QMessageBox { background: #F5F5F7; }
+QWidget#root, QWidget#content, QWidget#grid, QWidget#header, QWidget#toolbar, QScrollArea, QAbstractScrollArea, QDialog, QMessageBox { background: #F5F5F7; }
 QWidget#sidebar { background: #FFFFFF; border-right: 1px solid #D2D2D7; }
 QLabel { color: #1D1D1F; }
 QLabel#brandTitle, QLabel#pageTitle, QLabel#title { color: #1D1D1F; }
 QLabel#pageSubtitle, QLabel#subtitle, QLabel#description, QLabel#sidebarMeta, QLabel#emptyState { color: #6E6E73; }
+QLabel#summary { color: #1D1D1F; background: #FFFFFF; border-color: #D2D2D7; }
 QListWidget, QStackedWidget, QGroupBox, QLineEdit, QComboBox, QTableWidget { background: #FFFFFF; color: #1D1D1F; border-color: #D2D2D7; }
 QListWidget::item { color: #1D1D1F; padding: 8px; }
 QListWidget::item:selected { color: #1D1D1F; background: #DCEBFF; }
@@ -93,6 +94,8 @@ QToolButton { background: #F2F2F7; color: #1D1D1F; border: 1px solid #D2D2D7; bo
 QFrame#card { background: #FFFFFF; border-color: #D2D2D7; }
 QFrame#card:hover, QFrame#card[state="running"], QFrame#card[state="starting"], QFrame#card[state="failed"] { background: #FBFBFD; border-color: #D2D2D7; }
 QFrame#card:hover QLabel#title, QFrame#card[state="running"] QLabel#title, QFrame#card[state="starting"] QLabel#title, QFrame#card[state="failed"] QLabel#title { color: #1D1D1F; }
+QFrame#card QLabel#title { color: #1D1D1F; }
+QFrame#card QLabel#subtitle, QFrame#card QLabel#description { color: #6E6E73; }
 QLabel#badge { background: #E8E8ED; color: #1D1D1F; }
 QLabel#badgeRunning { background: #E5F7EC; color: #1B7F4B; }
 QLabel#badgeStarting { background: #FFF4D6; color: #8A5A00; }
