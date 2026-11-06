@@ -5,8 +5,7 @@
 .DESCRIPTION
     The shortcut is generated on the target machine because .lnk files contain
     absolute paths. It works from paths with spaces, mapped drives, and UNC
-    shares. The shortcut targets START_LAUNCHER.vbs so all normal launches use
-    the same path-independent bootstrap and bundled runtime logic.
+    shares. The shortcut targets the branded no-console executable.
 
 .NOTES
     Release verification recognizes the legacy runtime\pythonw.exe,
@@ -56,25 +55,32 @@ if (-not (Test-Path -LiteralPath $SourceRoot)) {
     $SourceRoot = $Root
 }
 $ShortcutPath = Join-Path $Root "START_LAUNCHER.lnk"
+$BrandedLauncher = Join-Path $Root "Unified-Pipeline-Launcher.exe"
+$BuiltLauncher = Join-Path $SourceRoot "build\Unified-Pipeline-Launcher\Unified-Pipeline-Launcher.exe"
+$LegacyLauncher = Join-Path $Root "launcher.exe"
 $LauncherScript = Join-Path $Root "START_LAUNCHER.vbs"
-$PortableLauncher = Join-Path $Root "launcher.exe"
-$BuiltLauncherRoot = Join-Path $SourceRoot "build\Unified-Pipeline-Launcher"
-$BuiltLauncher = Join-Path $BuiltLauncherRoot "launcher.exe"
 
-if (-not (Test-Path -LiteralPath $LauncherScript) -and
-    -not (Test-Path -LiteralPath $PortableLauncher) -and
-    -not (Test-Path -LiteralPath $BuiltLauncher)) {
-    throw "Launcher bootstrap not found: $LauncherScript"
+if (Test-Path -LiteralPath $BrandedLauncher) {
+    $TargetPath = $BrandedLauncher
+    $Arguments = ""
+} elseif (Test-Path -LiteralPath $BuiltLauncher) {
+    $TargetPath = $BuiltLauncher
+    $Arguments = ""
+} elseif (Test-Path -LiteralPath $LauncherScript) {
+    $TargetPath = Join-Path $env:SystemRoot "System32\wscript.exe"
+    $Arguments = "`"$LauncherScript`""
+} elseif (Test-Path -LiteralPath $LegacyLauncher) {
+    $TargetPath = $LegacyLauncher
+    $Arguments = ""
+} else {
+    throw "Unified-Pipeline-Launcher.exe was not found in $Root or $SourceRoot\build. Run the installer/build first."
 }
 
-$TargetPath = Join-Path $env:SystemRoot "System32\wscript.exe"
-$Arguments = "`"$LauncherScript`""
 $WorkingDirectory = $Root
 $LauncherIcon = Join-Path $SourceRoot "assets\launcher\launcher.ico"
 
-# Keep the shortcut on the verified VBS/Python bootstrap. The packaged EXE is
-# still available for explicit release launches, but must not bypass startup
-# validation or source-mode fallback when it is stale.
+# The packaged executable is already built with PyInstaller's --noconsole mode;
+# do not wrap it in PowerShell, cmd.exe, or a legacy VBS bootstrap.
 
 $Shell = New-Object -ComObject WScript.Shell
 $Shortcut = $Shell.CreateShortcut($ShortcutPath)

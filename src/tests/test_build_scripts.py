@@ -52,10 +52,11 @@ def test_branded_exe_build_and_repair_scripts(repo_root):
     assert "BUILD_LAUNCHER_EXE.ps1" in debug
 
 
-def test_shortcut_creator_uses_pythonw_without_terminal(source_root):
+def test_shortcut_creator_targets_branded_no_console_exe(source_root):
     script = (source_root / "scripts" / "create_launcher_shortcut.ps1").read_text(encoding="utf-8")
 
-    assert 'runtime\\pythonw.exe' in script
+    assert "Unified-Pipeline-Launcher.exe" in script
+    assert "--noconsole" in (source_root / "scripts" / "build_launcher.ps1").read_text(encoding="utf-8")
 
 
 def test_release_build_copies_launcher_requirements(source_root):
