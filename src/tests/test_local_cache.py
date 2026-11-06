@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import os
+
 from launcher.app_discovery import discover_apps
 from launcher.local_cache import LocalCacheManager
 
@@ -63,3 +65,15 @@ def test_sync_runtime_refreshes_when_source_changes(tmp_path):
     cached_python = cache.sync_runtime_to_local_cache(runtime_python)
 
     assert cached_python.read_text(encoding="utf-8") == "version 2"
+
+
+def test_metadata_fingerprint_skips_binary_content_reads(tmp_path):
+    source = tmp_path / "source"
+    source.mkdir()
+    binary = source / "large.bin"
+    binary.write_bytes(b"a" * 64)
+    first = LocalCacheManager._fingerprint_directory_metadata(source)
+    stat = binary.stat()
+    binary.write_bytes(b"b" * 64)
+    os.utime(binary, ns=(stat.st_atime_ns, stat.st_mtime_ns))
+    assert LocalCacheManager._fingerprint_directory_metadata(source) == first

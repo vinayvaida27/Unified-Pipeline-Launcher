@@ -215,6 +215,7 @@ class LocalCacheManager:
     # made within the filesystem mtime resolution is still detected. Larger
     # files (big DLLs) fall back to size + mtime to keep startup fast.
     _CONTENT_HASH_MAX_BYTES = 8 * 1024 * 1024
+    _CONTENT_HASH_SUFFIXES = {".py", ".json", ".jsonc", ".txt", ".toml", ".yaml", ".yml", ".ini", ".cfg"}
 
     @staticmethod
     def _fingerprint_directory_metadata(directory: Path) -> str:
@@ -229,7 +230,9 @@ class LocalCacheManager:
             digest.update(relative.encode("utf-8"))
             digest.update(str(stat.st_size).encode("ascii"))
             digest.update(str(stat.st_mtime_ns).encode("ascii"))
-            if stat.st_size <= LocalCacheManager._CONTENT_HASH_MAX_BYTES:
+            # Source/config text can change without a reliable network-share
+            # timestamp; large binaries only need size/mtime metadata.
+            if stat.st_size <= LocalCacheManager._CONTENT_HASH_MAX_BYTES and path.suffix.lower() in LocalCacheManager._CONTENT_HASH_SUFFIXES:
                 digest.update(path.read_bytes())
         return digest.hexdigest()
 
