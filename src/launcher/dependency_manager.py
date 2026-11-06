@@ -60,12 +60,57 @@ PACKAGE_ALIASES = {
 }
 PACKAGE_IMPORTS = {value: key for key, value in PACKAGE_ALIASES.items()}
 REQUIREMENT_PATTERN = re.compile(r"^[A-Za-z0-9_.-]+(?:\[[A-Za-z0-9_,.-]+\])?(?:[<>=!~].+)?$")
+IMPORT_ERROR_PATTERN = re.compile(r"No module named ['\"]([^'\"]+)['\"]")
 
 
 def distribution_name_for_import(module: str) -> str:
     """Map a top-level Python import to its PyPI distribution name."""
 
     return PACKAGE_ALIASES.get(module, module)
+
+
+def repair_requirement_from_error(error_text: str) -> str | None:
+    """Return the safe PyPI distribution for a common import error."""
+    match = IMPORT_ERROR_PATTERN.search(error_text or "")
+    return distribution_name_for_import(match.group(1).split(".", 1)[0]) if match else None
+
+
+def preview_runtime_dependencies(apps_directory: Path, runtime_python: Path) -> dict[str, list[str]]:
+    """Calculate dependency changes without invoking pip."""
+    packages = scan_python_dependencies(apps_directory)
+    missing = _missing_packages(runtime_python, packages)
+    return {
+        "packages": packages,
+        "missing": missing,
+        "installed": [package for package in packages if package not in missing],
+    }
+
+
+def package_health(runtime_python: Path, packages: list[str]) -> list[dict[str, str]]:
+    """Return installed/missing/outdated package states from the target runtime."""
+    health: list[dict[str, str]] = []
+    missing = set(_missing_packages(runtime_python, packages))
+    versions: dict[str, str] = {}
+    outdated: set[str] = set()
+    if packages:
+        script = "import importlib.metadata, json, sys; print(json.dumps({p: (importlib.metadata.version(p) if any((d.metadata.get('Name') or '').lower()==p.lower() for d in importlib.metadata.distributions()) else '') for p in sys.argv[1:]}))"
+        result = subprocess.run([str(runtime_python), "-I", "-c", script, *packages], capture_output=True, text=True, check=False, timeout=60)
+        try:
+            versions = json.loads(result.stdout)
+        except (ValueError, TypeError):
+            versions = {}
+        outdated_result = subprocess.run([str(runtime_python), "-I", "-m", "pip", "list", "--outdated", "--format", "json", "--disable-pip-version-check"], capture_output=True, text=True, check=False, timeout=60)
+        try:
+            outdated = {str(item.get("name", "")).lower() for item in json.loads(outdated_result.stdout)}
+        except (ValueError, TypeError):
+            outdated = set()
+    for package in packages:
+        if package in missing:
+            health.append({"package": package, "status": "missing", "details": "Import is unavailable"})
+            continue
+        status = "outdated" if package.lower() in outdated else "installed"
+        health.append({"package": package, "status": status, "details": versions.get(package) or "installed"})
+    return health
 
 
 def install_named_package(runtime_python: Path, state_directory: Path, requirement: str, progress=None) -> dict[str, str]:

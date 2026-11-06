@@ -5,7 +5,8 @@ from __future__ import annotations
 from pathlib import Path
 import re
 
-from PySide6.QtCore import QThreadPool
+from PySide6.QtCore import QSettings, QThreadPool
+from PySide6.QtWidgets import QApplication, QComboBox, QHBoxLayout
 from PySide6.QtWidgets import (
     QDialog, QFileDialog, QFormLayout, QGroupBox, QLabel,
     QLineEdit, QPushButton, QTableWidget, QTableWidgetItem, QToolButton, QVBoxLayout,
@@ -13,10 +14,11 @@ from PySide6.QtWidgets import (
 
 from ..app_discovery import discover_apps
 from ..app_registry import add_application
-from ..dependency_manager import install_named_package, update_runtime_dependencies
+from ..dependency_manager import install_named_package, preview_runtime_dependencies, update_runtime_dependencies
 from ..exceptions import LauncherError
 from ..models import PlatformConfig
 from .workers import Worker
+from .styles import APP_STYLE, LIGHT_STYLE, HIGH_CONTRAST_STYLE
 
 
 class SettingsDialog(QDialog):
@@ -32,6 +34,15 @@ class SettingsDialog(QDialog):
         layout.addWidget(QLabel(f"Local cache: {config.paths.local_cache_directory}"))
         layout.addWidget(QLabel(f"Apps directory: {config.paths.apps_directory}"))
         layout.addWidget(QLabel(f"Runtime: {config.paths.runtime_python}"))
+        appearance = QGroupBox("Appearance")
+        appearance_form = QFormLayout(appearance)
+        self.theme = QComboBox(); self.theme.addItems(["Dark", "Light", "High contrast"])
+        self.theme.setAccessibleName("Color theme")
+        saved_theme = QSettings("UnifiedPipelineLauncher", "Launcher").value("theme", "Dark")
+        self.theme.setCurrentText(str(saved_theme))
+        self.theme.currentTextChanged.connect(self._apply_theme)
+        appearance_form.addRow("Theme", self.theme)
+        layout.addWidget(appearance)
 
         group = QGroupBox("Add application")
         form = QFormLayout(group)
@@ -64,17 +75,25 @@ class SettingsDialog(QDialog):
         self.add_button.clicked.connect(self._save)
         self.update_button = QPushButton("Scan and update Python packages")
         self.update_button.clicked.connect(self._update_packages)
+        self.preview_button = QPushButton("Preview package changes")
+        self.preview_button.clicked.connect(self._preview_packages)
         self.manual_package = QLineEdit()
         self.manual_package.setPlaceholderText("e.g. scikit-learn or pandas>=2.0")
         self.manual_button = QPushButton("Install named package")
         self.manual_button.clicked.connect(self._install_named_package)
         self.package_status = QLabel()
+        self.package_summary = QLabel("Package health: not checked")
+        self.package_summary.setObjectName("emptyState")
         self.package_table = QTableWidget(0, 3)
         self.package_table.setHorizontalHeaderLabels(("Library", "Status", "Details"))
         self.package_table.setMinimumHeight(130)
         self.package_table.horizontalHeader().setStretchLastSection(True)
         manual_row = QVBoxLayout(); manual_row.addWidget(self.manual_package); manual_row.addWidget(self.manual_button)
-        layout.addWidget(group); layout.addWidget(advanced); layout.addWidget(advanced_box); layout.addWidget(self.error); layout.addWidget(self.add_button); layout.addWidget(self.update_button); layout.addLayout(manual_row); layout.addWidget(self.package_status); layout.addWidget(self.package_table)
+        layout.addWidget(group); layout.addWidget(advanced); layout.addWidget(advanced_box); layout.addWidget(self.error); layout.addWidget(self.add_button); layout.addWidget(self.preview_button); layout.addWidget(self.update_button); layout.addLayout(manual_row); layout.addWidget(self.package_summary); layout.addWidget(self.package_status); layout.addWidget(self.package_table)
+
+    def _apply_theme(self, theme: str) -> None:
+        QSettings("UnifiedPipelineLauncher", "Launcher").setValue("theme", theme)
+        QApplication.instance().setStyleSheet({"Light": LIGHT_STYLE, "High contrast": HIGH_CONTRAST_STYLE}.get(theme, APP_STYLE))
 
     def _install_named_package(self) -> None:
         requirement = self.manual_package.text().strip()
@@ -107,6 +126,7 @@ class SettingsDialog(QDialog):
     def _update_packages(self) -> None:
         self.update_button.setEnabled(False)
         self.package_status.setText("Scanning applications…")
+        self.package_summary.setText("Package health: scanning…")
         self.package_table.setRowCount(0)
 
         def work(progress):
@@ -123,6 +143,30 @@ class SettingsDialog(QDialog):
         worker.signals.failed.connect(lambda message, details: self._packages_failed(message))
         self.thread_pool.start(worker)
 
+    def _preview_packages(self) -> None:
+        self.preview_button.setEnabled(False)
+        self.package_status.setText("Preparing package preview…")
+        def work(progress):
+            return preview_runtime_dependencies(self.config.paths.apps_directory, self.config.paths.runtime_python)
+        worker = Worker(work)
+        worker.signals.finished.connect(self._packages_previewed)
+        worker.signals.failed.connect(lambda message, details: self._preview_failed(message))
+        self.thread_pool.start(worker)
+
+    def _packages_previewed(self, result: dict) -> None:
+        self.preview_button.setEnabled(True)
+        self.package_table.setRowCount(0)
+        for package in result["installed"]:
+            self._set_package_row(package, "✓ Installed", "No change")
+        for package in result["missing"]:
+            self._set_package_row(package, "＋ Install", "Will be installed")
+        self.package_summary.setText(f"Preview: {len(result['missing'])} to install, {len(result['installed'])} already available")
+        self.package_status.setText("Preview complete; no packages were changed.")
+
+    def _preview_failed(self, message: str) -> None:
+        self.preview_button.setEnabled(True)
+        self.package_status.setText(f"Package preview failed: {message}")
+
     def _packages_updated(self, result: dict) -> None:
         self.update_button.setEnabled(True)
         self.package_table.setRowCount(0)
@@ -136,6 +180,7 @@ class SettingsDialog(QDialog):
             f"Package update complete: {len(result['installed'])} installed, "
             f"{len(result['skipped'])} already available, {len(result['failed'])} failed."
         )
+        self.package_summary.setText(f"Package health: {len(result['skipped']) + len(result['installed'])} installed, {len(result['failed'])} failed, {len(result['missing'])} discovered missing")
 
     def _packages_failed(self, message: str) -> None:
         self.update_button.setEnabled(True)

@@ -91,7 +91,9 @@ class LocalCacheManager:
     def sync_app_to_local_cache(self, app: ApplicationManifest) -> ApplicationManifest:
         """Copy one app to the local cache and return a manifest pointing there."""
 
-        source_fingerprint = self._fingerprint_directory(app.app_dir)
+        # Metadata-first hashing avoids reading large files over SMB on every launch;
+        # small source files still include content so same-timestamp edits are detected.
+        source_fingerprint = self._fingerprint_directory_metadata(app.app_dir)
         cached_app_dir = self.apps_dir / app.id / app.version
         marker_path = cached_app_dir / ".app_cache_ready.json"
         if not self._cache_marker_matches(marker_path, source_fingerprint):

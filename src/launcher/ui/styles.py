@@ -67,3 +67,7 @@ QScrollBar::handle:vertical:hover { background: #515a68; }
 QScrollBar::add-line:vertical, QScrollBar::sub-line:vertical { height: 0; }
 QScrollBar::add-page:vertical, QScrollBar::sub-page:vertical { background: transparent; }
 """
+
+LIGHT_STYLE = APP_STYLE.replace("#0f1115", "#f5f7fa").replace("#15181e", "#ffffff").replace("#191d24", "#ffffff").replace("#1b1f27", "#eef1f5").replace("#f5f5f7", "#18202a").replace("#dce0e7", "#25313d").replace("#aeb4bf", "#536273").replace("#858b96", "#64748b")
+
+HIGH_CONTRAST_STYLE = APP_STYLE.replace("#0f1115", "#000000").replace("#15181e", "#000000").replace("#191d24", "#000000").replace("#f5f5f7", "#ffffff").replace("#aeb4bf", "#ffffff").replace("#858b96", "#ffffff").replace("#343a45", "#ffffff").replace("#2b313b", "#ffffff")

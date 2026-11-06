@@ -2,7 +2,10 @@ from __future__ import annotations
 
 import json
 
-from launcher.dependency_manager import distribution_name_for_import, install_named_package, scan_python_dependencies, update_runtime_dependencies
+from launcher.dependency_manager import (
+    distribution_name_for_import, install_named_package, scan_python_dependencies,
+    update_runtime_dependencies, repair_requirement_from_error, preview_runtime_dependencies,
+)
 
 
 def test_maps_common_imports_to_distribution_names():
@@ -75,3 +78,16 @@ def test_classifier_import_is_discovered(copied_apps):
         encoding="utf-8",
     )
     assert "scikit-learn" in scan_python_dependencies(copied_apps)
+
+
+def test_import_error_repair_maps_distribution():
+    assert repair_requirement_from_error("ModuleNotFoundError: No module named 'sklearn'") == "scikit-learn"
+    assert repair_requirement_from_error("unrelated failure") is None
+
+
+def test_dependency_preview_does_not_install(monkeypatch, copied_apps, tmp_path):
+    (copied_apps / "01_hello_pipeline" / "extra_preview.py").write_text("import pandas\n", encoding="utf-8")
+    monkeypatch.setattr("launcher.dependency_manager._missing_packages", lambda runtime, packages: packages[:1])
+    result = preview_runtime_dependencies(copied_apps, tmp_path / "python.exe")
+    assert result["missing"]
+    assert set(result["installed"]).isdisjoint(result["missing"])
