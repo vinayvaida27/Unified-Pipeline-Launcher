@@ -71,9 +71,12 @@ QScrollBar::add-page:vertical, QScrollBar::sub-page:vertical { background: trans
 LIGHT_STYLE = APP_STYLE + """
 QWidget#root, QWidget#content, QWidget#grid, QWidget#header, QWidget#toolbar, QDialog, QMessageBox { background: #F5F5F7; }
 QWidget#sidebar { background: #FFFFFF; border-right: 1px solid #D2D2D7; }
+QLabel { color: #1D1D1F; }
 QLabel#brandTitle, QLabel#pageTitle, QLabel#title { color: #1D1D1F; }
 QLabel#pageSubtitle, QLabel#subtitle, QLabel#description, QLabel#sidebarMeta, QLabel#emptyState { color: #6E6E73; }
-QLineEdit, QComboBox, QTableWidget { background: #FFFFFF; color: #1D1D1F; border-color: #D2D2D7; }
+QListWidget, QStackedWidget, QGroupBox, QLineEdit, QComboBox, QTableWidget { background: #FFFFFF; color: #1D1D1F; border-color: #D2D2D7; }
+QListWidget::item { color: #1D1D1F; padding: 8px; }
+QListWidget::item:selected { color: #1D1D1F; background: #DCEBFF; }
 QComboBox QAbstractItemView, QMenu { background: #FFFFFF; color: #1D1D1F; border-color: #D2D2D7; selection-background-color: #DCEBFF; selection-color: #1D1D1F; }
 QMenu::item { color: #1D1D1F; }
 QPushButton { background: #FFFFFF; color: #1D1D1F; border-color: #D2D2D7; }
