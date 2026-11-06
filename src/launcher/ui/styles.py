@@ -96,11 +96,13 @@ QFrame#card:hover, QFrame#card[state="running"], QFrame#card[state="starting"], 
 QFrame#card:hover QLabel#title, QFrame#card[state="running"] QLabel#title, QFrame#card[state="starting"] QLabel#title, QFrame#card[state="failed"] QLabel#title { color: #1D1D1F; }
 QFrame#card QLabel#title { color: #1D1D1F; }
 QFrame#card QLabel#subtitle, QFrame#card QLabel#description { color: #6E6E73; }
-QLabel#badge { background: #E8E8ED; color: #1D1D1F; }
-QLabel#badgeRunning { background: #E5F7EC; color: #1B7F4B; }
-QLabel#badgeStarting { background: #FFF4D6; color: #8A5A00; }
-QLabel#badgeFailed { background: #FFE5E7; color: #B42332; }
-QLabel#summary[state="active"] { color: #1B7F4B; background: #E5F7EC; border-color: #B8E6C8; }
+QLabel#badge { background: #F2F2F7; color: #4A4A4F; border: 1px solid #D2D2D7; }
+QLabel#badgeRunning { background: #E8F5EE; color: #1E6B45; border: 1px solid #B9DEC8; }
+QLabel#badgeStarting { background: #FFF7E6; color: #9A6700; border: 1px solid #F0D28A; }
+QLabel#badgeFailed { background: #FFECEE; color: #B42332; border: 1px solid #F2B8BF; }
+QLabel#summary[state="active"] { color: #1E6B45; background: #E8F5EE; border-color: #B9DEC8; }
+QLabel#summary[state="busy"] { color: #9A6700; background: #FFF7E6; border-color: #F0D28A; }
+QLabel#summary[state="idle"] { color: #4A4A4F; background: #F2F2F7; border-color: #D2D2D7; }
 """
 
 HIGH_CONTRAST_STYLE = APP_STYLE.replace("#0f1115", "#000000").replace("#15181e", "#000000").replace("#191d24", "#000000").replace("#f5f5f7", "#ffffff").replace("#aeb4bf", "#ffffff").replace("#858b96", "#ffffff").replace("#343a45", "#ffffff").replace("#2b313b", "#ffffff")
